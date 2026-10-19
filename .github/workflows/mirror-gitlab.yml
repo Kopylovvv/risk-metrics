@@ -1,0 +1,68 @@
+name: Mirror to GitLab
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["**"]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-gitlab
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Configure SSH
+        shell: bash
+        env:
+          PRIVATE_KEY: ${{ secrets.GITLAB_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.GITLAB_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          : "${PRIVATE_KEY:?Missing GITLAB_SSH_PRIVATE_KEY}"
+          : "${KNOWN_HOSTS:?Missing GITLAB_KNOWN_HOSTS}"
+
+          umask 077
+          printf '%s\n' "$PRIVATE_KEY" > "$RUNNER_TEMP/gitlab-key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$RUNNER_TEMP/gitlab-known-hosts"
+
+          cat > "$RUNNER_TEMP/gitlab-ssh-config" <<EOF
+          Host gitlab.mai.ru
+            HostName gitlab.mai.ru
+            Port 2222
+            User git
+            IdentityFile $RUNNER_TEMP/gitlab-key
+            IdentitiesOnly yes
+            BatchMode yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile $RUNNER_TEMP/gitlab-known-hosts
+            ConnectTimeout 20
+          EOF
+
+      - name: Copy branches and tags
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          gh auth setup-git --hostname github.com
+          gh repo clone \
+            "https://github.com/${GITHUB_REPOSITORY}.git" \
+            mirror.git -- --bare
+
+          export GIT_SSH_COMMAND="ssh -F $RUNNER_TEMP/gitlab-ssh-config"
+
+          git -C mirror.git push --atomic \
+            ssh://git@gitlab.mai.ru:2222/mai-t1-risk-metrics/risk-metrics.git \
+            'refs/heads/*:refs/heads/*' \
+            'refs/tags/*:refs/tags/*'
