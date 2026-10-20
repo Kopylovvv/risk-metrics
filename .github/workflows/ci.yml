@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  infrastructure:
+    name: Compose and PostgreSQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      COMPOSE_PROJECT_NAME: risk-metrics-ci
+      POSTGRES_DB: risk_metrics_ci
+      POSTGRES_USER: risk_metrics_ci
+      POSTGRES_PASSWORD: ci_only_password
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check changed lines
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ -n "$BASE_SHA" && ! "$BASE_SHA" =~ ^0+$ ]]; then
+            git diff --check "$BASE_SHA" HEAD
+          else
+            git show --format= --check HEAD
+          fi
+
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+
+      - name: Start PostgreSQL
+        run: docker compose up -d --wait --wait-timeout 90 db
+
+      - name: Write a control record
+        run: |
+          docker compose exec -T db sh -c '
+            export PGPASSWORD="$POSTGRES_PASSWORD"
+            exec psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1
+          ' <<'SQL'
+          CREATE TABLE ci_persistence_check (id integer PRIMARY KEY, value text NOT NULL);
+          INSERT INTO ci_persistence_check (id, value) VALUES (1, 'ci-persisted');
+          SQL
+
+      - name: Recreate container and verify stored data
+        shell: bash
+        run: |
+          docker compose down
+          docker compose up -d --wait --wait-timeout 90 db
+          actual="$(docker compose exec -T db sh -c '
+            export PGPASSWORD="$POSTGRES_PASSWORD"
+            exec psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -Atc "SELECT value FROM ci_persistence_check WHERE id=1"
+          ')"
+          [[ "$actual" == "ci-persisted" ]]
+
+      - name: Show PostgreSQL logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail=100 db
+
+      - name: Remove temporary CI database
+        if: always()
+        run: docker compose down --volumes --remove-orphans
