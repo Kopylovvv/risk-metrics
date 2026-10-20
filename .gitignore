@@ -1,1 +1,65 @@
+# Local settings and secrets; keep shared templates
 .env
+.env.*
+!.env.example
+!.env.*.example
+
+# Python environments, bytecode and packaging
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+
+# Python checks and coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# React / TypeScript / Vite dependencies, cache and reports
+node_modules/
+.vite/
+.vite-temp/
+*.tsbuildinfo
+.eslintcache
+.stylelintcache
+coverage/
+playwright-report/
+test-results/
+blob-report/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# JetBrains and Visual Studio Code local settings
+.idea/
+*.iml
+.fleet/
+.vscode/
+*.code-workspace
+.vscode-test/
+
+# Local logs and editor temporary files
+logs/
+*.log
+*.swp
+*.swo
+*~
+
+# macOS and Windows metadata
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
