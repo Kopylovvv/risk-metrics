@@ -1,0 +1,12 @@
+# в образ попадает только то, что нужно для запуска
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.env
+.env.*
+.idea/
+.vscode/
+*.md
