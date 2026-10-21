@@ -6,11 +6,13 @@
 3. короткая запись: новые снимки и курсы, запуск расчёта и строки результата
 """
 
+import logging
 import uuid
-from collections.abc import Iterable
+from collections.abc import Awaitable, Iterable
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
+from typing import TypeVar
 
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import distinct_on
@@ -30,6 +32,9 @@ from app.db import (
 )
 from app.enums import RowErrorCode, RowStatus, RunStatus
 from app.services.workspaces import RevisionConflict
+
+logger = logging.getLogger(__name__)
+T = TypeVar("T")
 
 MEASURE_CODE = "DV01"
 METHODOLOGY_VERSION = "dv01-v1"
@@ -176,7 +181,9 @@ async def _fetch_missing(
     for isin, m in prepared.markets.items():
         if m.instrument is None:
             try:
-                m.new_instrument = await market.get_instrument(isin)
+                info = await _ask(market.get_instrument(isin))
+                _check(info.isin == isin)
+                m.new_instrument = info
             except contracts.MarketDataError as exc:
                 m.error = exc.code
                 continue
@@ -184,7 +191,9 @@ async def _fetch_missing(
         if m.snapshot is not None and m.snapshot.data_as_of == valuation_date:
             continue
         try:
-            m.new_snapshot = await market.get_snapshot(isin, valuation_date)
+            snapshot = await _ask(market.get_snapshot(isin, valuation_date))
+            _check(snapshot.isin == isin and snapshot.data_as_of <= valuation_date)
+            m.new_snapshot = snapshot
         except contracts.MarketDataError as exc:
             # источник не ответил: берём последний сохранённый снимок (его дата есть в ответе)
             if m.snapshot is None:
@@ -197,10 +206,29 @@ async def _fetch_missing(
         if known.rate is not None and known.rate.rate_date == valuation_date:
             continue
         try:
-            known.new_rate = await fx.get_rate_to_rub(currency, valuation_date)
+            rate = await _ask(fx.get_rate_to_rub(currency, valuation_date))
+            _check(rate.currency == currency and rate.rate_date <= valuation_date)
+            known.new_rate = rate
         except contracts.MarketDataError as exc:
             if known.rate is None:
                 known.error = exc.code
+
+
+async def _ask(call: Awaitable[T]) -> T:
+    """Запрос к источнику: любой сбой адаптера становится ошибкой строки, а не ответом 500"""
+    try:
+        return await call
+    except contracts.MarketDataError:
+        raise
+    except Exception as exc:
+        logger.exception("Сбой источника данных")
+        raise contracts.MarketDataError(RowErrorCode.PROVIDER_UNAVAILABLE) from exc
+
+
+def _check(condition: bool) -> None:
+    """Источник вернул не то, что просили (другой ISIN, данные позже даты оценки)"""
+    if not condition:
+        raise contracts.MarketDataError(RowErrorCode.INCOMPATIBLE_MARKET_DATA)
 
 
 # --- шаг 3: запись ---------------------------------------------------------------
