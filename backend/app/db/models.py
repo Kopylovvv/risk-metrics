@@ -23,9 +23,8 @@ from sqlalchemy.dialects.postgresql import CHAR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
 
-from app.contracts import CouponType, Provider
 from app.db.base import Base
-from app.schemas.calculations import RowStatus, RunStatus
+from app.enums import CouponType, Provider, RowStatus, RunStatus
 
 
 def pg_enum(enum_cls: type[Enum], name: str) -> SAEnum:

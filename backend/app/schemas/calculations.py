@@ -1,24 +1,12 @@
 """Запуск расчёта DV01 и результат"""
 
 from datetime import date, datetime
-from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.contracts import Provider, RowErrorCode
+from app.enums import Provider, RowErrorCode, RowStatus, RunStatus
 from app.schemas.common import DecimalStr
-
-
-class RunStatus(StrEnum):
-    SUCCESS = "success"  # все строки посчитаны, есть итог
-    PARTIAL = "partial"  # часть строк с ошибкой, итога нет
-    FAILED = "failed"  # ни одна строка не посчитана, итога нет
-
-
-class RowStatus(StrEnum):
-    SUCCESS = "success"
-    FAILED = "failed"
 
 
 class CalculationRequest(BaseModel):
