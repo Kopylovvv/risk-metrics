@@ -37,6 +37,13 @@ def csrf_token_for(session_key: str) -> str:
     return hmac.new(session_key.encode(), b"csrf", hashlib.sha256).hexdigest()
 
 
+def _belongs(workspace: Workspace | None, session_key: str) -> bool:
+    """Набор существует и принадлежит этой сессии (сравнение за постоянное время)"""
+    return workspace is not None and hmac.compare_digest(
+        workspace.session_key_hash, hash_session_key(session_key)
+    )
+
+
 async def own_workspace(
     workspace_id: uuid.UUID, db: Db, session_key: SessionKey = None
 ) -> Workspace:
@@ -44,9 +51,7 @@ async def own_workspace(
     if not session_key:
         raise errors.session_required()
     workspace = await db.get(Workspace, workspace_id)
-    if workspace is None or not hmac.compare_digest(
-        workspace.session_key_hash, hash_session_key(session_key)
-    ):
+    if not _belongs(workspace, session_key):
         raise errors.workspace_not_found()
     # чтение закончено: не держим транзакцию открытой (дальше могут быть внешние запросы)
     await db.commit()
@@ -76,9 +81,7 @@ async def own_calculation(
         raise errors.session_required()
     run = await db.get(CalculationRun, calculation_id)
     workspace = await db.get(Workspace, run.workspace_id) if run else None
-    if workspace is None or not hmac.compare_digest(
-        workspace.session_key_hash, hash_session_key(session_key)
-    ):
+    if not _belongs(workspace, session_key):
         raise errors.calculation_not_found()
     return run
 

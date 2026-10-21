@@ -8,7 +8,7 @@ from app.api.convert import instrument_out
 from app.api.deps import Db
 from app.errors import error_responses
 from app.schemas import InstrumentOut, Isin
-from app.services.workspaces import find_instrument, latest_snapshots
+from app.services.market import find_instrument, latest_snapshots
 
 router = APIRouter(prefix="/api/v1/instruments", tags=["Инструменты"])
 

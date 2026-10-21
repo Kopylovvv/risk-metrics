@@ -17,7 +17,9 @@ from app.schemas import (
     TradeOut,
     WorkspaceOut,
 )
-from app.services.workspaces import latest_snapshots, list_trades
+from app.services.calculation import latest_calculation_id
+from app.services.market import latest_snapshots
+from app.services.workspaces import list_trades
 
 
 def instrument_out(instrument: Instrument, snapshot: MarketDataSnapshot | None) -> InstrumentOut:
@@ -58,6 +60,7 @@ async def workspace_out(db: AsyncSession, workspace: Workspace) -> WorkspaceOut:
         id=workspace.id,
         revision=workspace.revision,
         trades=[trade_out(t, snapshots) for t in trades],
+        last_calculation_id=await latest_calculation_id(db, workspace.id),
         created_at=workspace.created_at,
         updated_at=workspace.updated_at,
     )
