@@ -1,0 +1,39 @@
+name: Compose
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "backend/**"
+      - "compose.yaml"
+      - "scripts/check_compose.py"
+      - ".github/workflows/compose.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - "compose.yaml"
+      - "scripts/check_compose.py"
+      - ".github/workflows/compose.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compose-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compose:
+    name: Container startup, API and persistence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Check the complete Compose startup on a temporary database
+        run: python scripts/check_compose.py
