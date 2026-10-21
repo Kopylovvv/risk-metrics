@@ -9,11 +9,13 @@ from typing import Annotated
 from fastapi import Cookie, Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import errors
+from app import contracts, errors
 from app.config import allowed_origins
-from app.db import Workspace
+from app.db import CalculationRun, Workspace
 from app.db.session import get_session
 from app.services.workspaces import hash_session_key
+from app.stubs.risk_core import calc_dv01
+from app.stubs.sources import NoFxRateSource, NoMarketDataSource
 
 SESSION_COOKIE = "rm_session"
 CSRF_HEADER = "X-CSRF-Token"
@@ -46,6 +48,8 @@ async def own_workspace(
         workspace.session_key_hash, hash_session_key(session_key)
     ):
         raise errors.workspace_not_found()
+    # чтение закончено: не держим транзакцию открытой (дальше могут быть внешние запросы)
+    await db.commit()
     return workspace
 
 
@@ -64,5 +68,38 @@ async def own_workspace_for_change(
     return workspace
 
 
+async def own_calculation(
+    calculation_id: uuid.UUID, db: Db, session_key: SessionKey = None
+) -> CalculationRun:
+    """Сохранённый расчёт, только если его набор принадлежит сессии из cookie"""
+    if not session_key:
+        raise errors.session_required()
+    run = await db.get(CalculationRun, calculation_id)
+    workspace = await db.get(Workspace, run.workspace_id) if run else None
+    if workspace is None or not hmac.compare_digest(
+        workspace.session_key_hash, hash_session_key(session_key)
+    ):
+        raise errors.calculation_not_found()
+    return run
+
+
+# Точки подключения источников данных и расчётного ядра
+# Сейчас временные реализации из app/stubs; адаптеры и risk_core подключаются здесь
+def get_market_data() -> contracts.MarketDataProvider:
+    return NoMarketDataSource()
+
+
+def get_fx_rates() -> contracts.FxRateProvider:
+    return NoFxRateSource()
+
+
+def get_risk_calculator() -> contracts.RiskCalculator:
+    return calc_dv01
+
+
 OwnWorkspace = Annotated[Workspace, Depends(own_workspace)]
 OwnWorkspaceForChange = Annotated[Workspace, Depends(own_workspace_for_change)]
+OwnCalculation = Annotated[CalculationRun, Depends(own_calculation)]
+MarketData = Annotated[contracts.MarketDataProvider, Depends(get_market_data)]
+FxRates = Annotated[contracts.FxRateProvider, Depends(get_fx_rates)]
+RiskCalculator = Annotated[contracts.RiskCalculator, Depends(get_risk_calculator)]

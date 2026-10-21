@@ -229,3 +229,4 @@ class CalculationResult(Base):
     error_code: Mapped[str | None] = mapped_column(String(64))
 
     run: Mapped[CalculationRun] = relationship(back_populates="results")
+    snapshot: Mapped[MarketDataSnapshot | None] = relationship()  # источник и дата данных

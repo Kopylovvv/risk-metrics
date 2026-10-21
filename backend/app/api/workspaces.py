@@ -38,8 +38,6 @@ async def open_workspace(response: Response, db: Db, session_key: SessionKey = N
     else:
         session_key = new_session_key()
         workspace = await create_workspace(db, session_key)
-        await db.commit()
-        await db.refresh(workspace)  # created_at/updated_at проставила БД
         response.set_cookie(
             SESSION_COOKIE,
             session_key,
