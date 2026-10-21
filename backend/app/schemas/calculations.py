@@ -23,7 +23,7 @@ class RowStatus(StrEnum):
 
 class CalculationRequest(BaseModel):
     expected_revision: int = Field(ge=0)
-    valuation_date: date | None = Field(None, description="Дата оценки; по умолчанию — сегодня")
+    valuation_date: date | None = Field(None, description="Дата оценки; по умолчанию сегодня")
 
     model_config = {
         "json_schema_extra": {

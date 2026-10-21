@@ -1,15 +1,18 @@
 """Тесты на настоящем PostgreSQL: отдельная база <имя>_test, схема ставится миграциями"""
 
 import os
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
 import pytest
 from alembic import command
 from alembic.config import Config
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import URL
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import NullPool
 
 from app.config import database_url
 
@@ -75,3 +78,35 @@ def session(engine: Engine) -> Iterator[Session]:
         with Session(bind=conn, join_transaction_mode="create_savepoint") as s:
             yield s
         outer.rollback()
+
+
+# --- API ---------------------------------------------------------------------
+
+TABLES = (
+    "calculation_results, calculation_runs, trades, market_data_snapshots, fx_rates,"
+    " instruments, workspaces"
+)
+
+
+@pytest.fixture
+async def api(test_db_url: URL, engine: Engine) -> AsyncIterator[AsyncClient]:
+    """HTTP-клиент к приложению; после теста все таблицы очищаются"""
+    from app.db.session import get_session  # импорт после выбора тестовой базы
+    from app.main import app
+
+    # NullPool: у каждого теста свой event loop, соединения между тестами не переиспользуем
+    async_engine = create_async_engine(test_db_url, poolclass=NullPool)
+    factory = async_sessionmaker(async_engine, expire_on_commit=False)
+
+    async def test_session() -> AsyncIterator[AsyncSession]:
+        async with factory() as s:
+            yield s
+
+    app.dependency_overrides[get_session] = test_session
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+    app.dependency_overrides.clear()
+    await async_engine.dispose()
+    with engine.begin() as conn:
+        conn.execute(text(f"TRUNCATE {TABLES} CASCADE"))

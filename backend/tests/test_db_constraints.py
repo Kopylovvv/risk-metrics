@@ -208,7 +208,7 @@ def test_unique_isin_session_and_fx(session: Session):
     session.add(fx())
     session.flush()
     expect_violation(session, fx())
-    session.add(fx(source="other"))  # другой источник — допустимо
+    session.add(fx(source="other"))  # другой источник допустим
     session.flush()
 
 
@@ -226,8 +226,8 @@ def test_one_snapshot_per_instrument_day_provider(session: Session):
             coupon_type=CouponType.FIXED,
         ),
     )
-    make_snapshot(session, ins, provider=Provider.RUDATA)  # другой источник — допустимо
-    make_snapshot(session, ins, data_as_of=date(2026, 10, 21))  # другой день — допустимо
+    make_snapshot(session, ins, provider=Provider.RUDATA)  # другой источник допустим
+    make_snapshot(session, ins, data_as_of=date(2026, 10, 21))  # другой день допустим
 
 
 def test_positive_market_values(session: Session):
