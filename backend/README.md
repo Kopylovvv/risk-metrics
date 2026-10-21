@@ -10,7 +10,8 @@ app/
   main.py          приложение FastAPI, CORS, подключение роутеров
   config.py        настройки из окружения / .env в корне репозитория
   errors.py        единый формат ошибок {code, message, details}
-  contracts.py     общий интерфейс backend ↔ market_data / risk_core (с Андреем)
+  enums.py         общие перечисления: источник, тип купона, статусы, коды ошибок строк
+  contracts.py     общий интерфейс backend ↔ market_data / risk_core
   schemas/         Pydantic-модели запросов и ответов API
   api/             роутеры: workspaces, trades, instruments, health; в deps.py сессия и CSRF
   services/        работа с наборами и сделками в БД, проверка revision

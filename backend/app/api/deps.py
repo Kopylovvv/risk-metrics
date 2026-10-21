@@ -1,0 +1,68 @@
+"""Общие зависимости роутеров: БД, сессия по cookie, доступ к своему набору, CSRF"""
+
+import hashlib
+import hmac
+import secrets
+import uuid
+from typing import Annotated
+
+from fastapi import Cookie, Depends, Header, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app import errors
+from app.config import allowed_origins
+from app.db import Workspace
+from app.db.session import get_session
+from app.services.workspaces import hash_session_key
+
+SESSION_COOKIE = "rm_session"
+CSRF_HEADER = "X-CSRF-Token"
+
+Db = Annotated[AsyncSession, Depends(get_session)]
+# cookie не показываем в /docs: браузер сам отправляет её после POST /workspaces
+SessionKey = Annotated[str | None, Cookie(alias=SESSION_COOKIE, include_in_schema=False)]
+
+
+def new_session_key() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def csrf_token_for(session_key: str) -> str:
+    """CSRF-токен выводится из ключа сессии: хранить его в БД не нужно
+
+    Чужой сайт не может прочитать HttpOnly-cookie, значит, не может и посчитать токен
+    """
+    return hmac.new(session_key.encode(), b"csrf", hashlib.sha256).hexdigest()
+
+
+async def own_workspace(
+    workspace_id: uuid.UUID, db: Db, session_key: SessionKey = None
+) -> Workspace:
+    """Набор из пути, только если он принадлежит сессии из cookie"""
+    if not session_key:
+        raise errors.session_required()
+    workspace = await db.get(Workspace, workspace_id)
+    if workspace is None or not hmac.compare_digest(
+        workspace.session_key_hash, hash_session_key(session_key)
+    ):
+        raise errors.workspace_not_found()
+    return workspace
+
+
+async def own_workspace_for_change(
+    request: Request,
+    workspace: Annotated[Workspace, Depends(own_workspace)],
+    session_key: SessionKey = None,
+    csrf_token: Annotated[str | None, Header(alias=CSRF_HEADER)] = None,
+) -> Workspace:
+    """Для изменяющих запросов: дополнительно Origin и X-CSRF-Token"""
+    origin = request.headers.get("origin")
+    if origin is not None and origin not in allowed_origins():
+        raise errors.origin_not_allowed()
+    if not csrf_token or not hmac.compare_digest(csrf_token, csrf_token_for(session_key or "")):
+        raise errors.csrf_invalid()
+    return workspace
+
+
+OwnWorkspace = Annotated[Workspace, Depends(own_workspace)]
+OwnWorkspaceForChange = Annotated[Workspace, Depends(own_workspace_for_change)]

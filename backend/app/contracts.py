@@ -18,30 +18,27 @@
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from enum import StrEnum
 from typing import Protocol
 
+# Перечисления лежат в app/enums.py; импорт отсюда тоже работает:
+# from app.contracts import Provider, CouponType, RowErrorCode
+from app.enums import CouponType, Provider, RowErrorCode
 
-class Provider(StrEnum):
-    CBONDS = "cbonds"
-    RUDATA = "rudata"
-    TEST = "test"  # контрольный набор, только для тестового окружения
-
-
-class CouponType(StrEnum):
-    FIXED = "fixed"
-    FLOATING = "floating"  # Duration = 1 / coupon_frequency, Convexity = 0
-    ZERO = "zero"
-
-
-class RowErrorCode(StrEnum):
-    """Коды ошибок по одной сделке (calculation_results.error_code)"""
-
-    INSTRUMENT_NOT_FOUND = "INSTRUMENT_NOT_FOUND"
-    MISSING_MARKET_DATA = "MISSING_MARKET_DATA"
-    PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
-    INCOMPATIBLE_MARKET_DATA = "INCOMPATIBLE_MARKET_DATA"
-    MISSING_FX_RATE = "MISSING_FX_RATE"
+__all__ = [
+    "CalculationInputError",
+    "CouponType",
+    "Dv01Input",
+    "Dv01Result",
+    "FxRate",
+    "FxRateProvider",
+    "InstrumentInfo",
+    "MarketDataError",
+    "MarketDataProvider",
+    "MarketSnapshot",
+    "Provider",
+    "RiskCalculator",
+    "RowErrorCode",
+]
 
 
 # --------------------------------------------------------------------------

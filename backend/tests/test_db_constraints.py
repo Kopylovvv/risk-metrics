@@ -10,7 +10,6 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
-from app.contracts import CouponType, Provider
 from app.db import (
     CalculationResult,
     CalculationRun,
@@ -20,7 +19,7 @@ from app.db import (
     Trade,
     Workspace,
 )
-from app.schemas.calculations import RowStatus, RunStatus
+from app.enums import CouponType, Provider, RowStatus, RunStatus
 
 NOW = datetime(2026, 10, 20, 10, 0, tzinfo=UTC)
 DAY = date(2026, 10, 20)
