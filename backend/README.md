@@ -1,7 +1,8 @@
 # Backend: модуль расчёта DV01
 
 Готово: схема БД с миграциями, API набора сделок (создание, чтение, изменение, удаление),
-карточка инструмента из БД. Расчёт DV01 будет следующим шагом (S2-11)
+карточка инструмента, расчёт DV01 с сохранением результата. Источники Cbonds/RuData и
+модуль risk_core пока заменены временными реализациями из `app/stubs`
 
 ## Структура
 
@@ -13,8 +14,10 @@ app/
   enums.py         общие перечисления: источник, тип купона, статусы, коды ошибок строк
   contracts.py     общий интерфейс backend ↔ market_data / risk_core
   schemas/         Pydantic-модели запросов и ответов API
-  api/             роутеры: workspaces, trades, instruments, health; в deps.py сессия и CSRF
-  services/        работа с наборами и сделками в БД, проверка revision
+  api/             роутеры: workspaces, trades, calculations, instruments, health;
+                   в deps.py сессия, CSRF и точки подключения источников и ядра
+  services/        наборы и сделки (workspaces.py), путь расчёта (calculation.py)
+  stubs/           временно: источники без данных, формула DV01, демо-данные
   db/              модели SQLAlchemy (схема v4) и подключение
 migrations/        Alembic: 0001 схема v4, 0002 короткие имена внешних ключей
 tests/             тесты на настоящем PostgreSQL: схема, ограничения, API
@@ -30,6 +33,7 @@ tests/             тесты на настоящем PostgreSQL: схема, о
 python -m venv .venv && .venv\Scripts\activate      # Linux/macOS: source .venv/bin/activate
 pip install -r requirements-dev.txt
 alembic upgrade head
+python -m app.stubs.demo_data      # демо-облигации и курс USD на сегодня (по желанию)
 uvicorn app.main:app --reload
 ```
 
@@ -44,6 +48,8 @@ uvicorn app.main:app --reload
 | POST | `/api/v1/workspaces/{id}/trades` | добавить сделку `{isin, quantity, expected_revision}` |
 | PATCH | `/api/v1/workspaces/{id}/trades/{trade_id}` | изменить `isin` и/или `quantity` (+ `expected_revision`) |
 | DELETE | `/api/v1/workspaces/{id}/trades/{trade_id}?expected_revision=N` | удалить сделку |
+| POST | `/api/v1/workspaces/{id}/calculations` | расчёт DV01 `{expected_revision, valuation_date?}`, результат сохраняется |
+| GET | `/api/v1/calculations/{id}` | сохранённый расчёт с входами на его момент |
 | GET | `/api/v1/instruments/{isin}` | карточка облигации из БД |
 | GET | `/health/live`, `/health/ready` | процесс жив / база доступна |
 
@@ -67,12 +73,45 @@ uvicorn app.main:app --reload
 | 401 | `SESSION_REQUIRED` | нет cookie сессии |
 | 403 | `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED` | нет/неверный токен, чужой сайт |
 | 404 | `WORKSPACE_NOT_FOUND` | набора нет или он чужой |
-| 404 | `TRADE_NOT_FOUND`, `INSTRUMENT_NOT_FOUND` | сделки нет в этом наборе / бумаги нет в справочнике |
+| 404 | `TRADE_NOT_FOUND`, `CALCULATION_NOT_FOUND`, `INSTRUMENT_NOT_FOUND` | сделки нет в наборе / расчёт чужой или не найден / бумаги нет в справочнике |
 | 409 | `REVISION_CONFLICT` | набор уже изменён: обновить и повторить |
 | 422 | `VALIDATION_ERROR` | неверный ввод; в `details[].field` указано поле |
+| 422 | `WORKSPACE_EMPTY` | расчёт пустого набора |
 | 404, 405 | `NOT_FOUND`, `METHOD_NOT_ALLOWED` | нет такого адреса / метода |
 | 503 | `DATABASE_UNAVAILABLE` | нет соединения с PostgreSQL |
 | 500 | `INTERNAL_ERROR` | непредвиденная ошибка (подробности только в логе сервера) |
+
+## Расчёт DV01
+
+`POST /api/v1/workspaces/{id}/calculations` проходит три шага, чтобы не держать транзакцию
+открытой, пока ждём внешние источники:
+
+1. Короткое чтение: проверка `expected_revision`, сделки набора, справочник, последние
+   снимки (дата данных не позже даты оценки) и курсы из БД
+2. Без транзакции: недостающее у источников. Если снимка за дату оценки нет, спрашиваем
+   источник; не ответил, но в БД есть более ранний снимок, считаем по нему (его дата в
+   `data_as_of`). То же для курсов валют
+3. Короткая запись: набор блокируется и `revision` проверяется ещё раз (изменили во время
+   расчёта → 409, ничего не сохраняется), новые инструменты, снимки и курсы, запуск
+   `calculation_runs` и строки `calculation_results`
+
+Формула: CFV = количество × номинал × котировка/100 × курс (RUB = 1), НКД не входит;
+DV01 = CFV × (−D·1bp + ½·C·1bp²); плавающий купон: D = 1/частота выплат, C = 0.
+Все суммы в рублях, без округления
+
+Каждая строка результата хранит копию входов (`input_isin`, `input_quantity`) и
+подставленные параметры (`*_used`, снимок, курс), поэтому старый расчёт не меняется после
+правки или удаления сделки. Статус: `success` (все строки посчитаны, есть `total_value`),
+`partial` (часть строк с ошибкой), `failed` (ни одной); при ошибках `total_value = null`
+
+Ошибки строк: `INSTRUMENT_NOT_FOUND`, `PROVIDER_UNAVAILABLE`, `MISSING_MARKET_DATA`
+(нет цены, номинала, дюрации или выпуклости), `INCOMPATIBLE_MARKET_DATA` (валюта снимка
+не совпадает со справочником), `MISSING_FX_RATE`
+
+Источники и ядро подключаются в `app/api/deps.py` (`get_market_data`, `get_fx_rates`,
+`get_risk_calculator`) по протоколам из `contracts.py`. Сейчас там временные реализации:
+источники отвечают `PROVIDER_UNAVAILABLE`, поэтому живой API считает по данным из БД
+(например, после `python -m app.stubs.demo_data`)
 
 ### Для фронта (Егор)
 
@@ -127,6 +166,11 @@ pytest
 - API: CRUD сделок с записью в PostgreSQL, проверка ISIN и количества, примеры из `/docs`,
   409 при устаревшем `revision` (в том числе параллельные запросы), 401/403/404 для
   чужих наборов, без cookie, без CSRF-токена и с чужого Origin
+- расчёт: контрольный запрос от сделок до сохранённого результата (лонг, шорт, флоатер,
+  валютная бумага, итог), история после изменения и удаления сделки, ошибки строк и
+  статусы partial/failed, данные от источника сохраняются и переиспользуются, запасной
+  старый снимок, отсутствие открытой транзакции во время внешнего запроса (по
+  `pg_stat_activity`), 409 при изменении набора во время расчёта, доступ к чужим расчётам
 
 ## Схема БД (v4) и ограничения
 

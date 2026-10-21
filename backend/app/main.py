@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health, instruments, trades, workspaces
+from app.api import calculations, health, instruments, trades, workspaces
 from app.config import allowed_origins
 from app.errors import register_error_handlers
 
@@ -30,5 +30,5 @@ app.add_middleware(
 
 register_error_handlers(app)
 
-for module in (workspaces, trades, instruments, health):
+for module in (workspaces, trades, calculations, instruments, health):
     app.include_router(module.router)

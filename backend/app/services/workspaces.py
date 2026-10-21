@@ -1,4 +1,4 @@
-"""Работа с наборами и сделками в БД. Транзакцией управляет вызывающий код (роутер)"""
+"""Наборы и сделки в БД. Каждая изменяющая функция сама завершает свою транзакцию (commit)"""
 
 import hashlib
 import uuid
@@ -28,7 +28,8 @@ def hash_session_key(session_key: str) -> str:
 async def create_workspace(db: AsyncSession, session_key: str) -> Workspace:
     workspace = Workspace(session_key_hash=hash_session_key(session_key))
     db.add(workspace)
-    await db.flush()
+    await db.commit()
+    await db.refresh(workspace)  # created_at/updated_at проставила БД
     return workspace
 
 
@@ -74,6 +75,11 @@ async def find_instrument(db: AsyncSession, isin: str) -> Instrument | None:
     return await db.scalar(select(Instrument).where(Instrument.isin == isin))
 
 
+async def _commit(db: AsyncSession, workspace: Workspace) -> None:
+    await db.commit()
+    await db.refresh(workspace)  # новый updated_at набора
+
+
 async def _bump_revision(db: AsyncSession, workspace: Workspace, expected: int) -> None:
     """revision + 1 одним UPDATE с проверкой ожидаемого значения
 
@@ -113,7 +119,7 @@ async def add_trade(
         quantity=quantity,
     )
     db.add(trade)
-    await db.flush()
+    await _commit(db, workspace)
     return trade
 
 
@@ -133,7 +139,7 @@ async def update_trade(
         trade.instrument_id = instrument.id if instrument else None
     if quantity is not None:
         trade.quantity = quantity
-    await db.flush()
+    await _commit(db, workspace)
     return trade
 
 
@@ -144,4 +150,4 @@ async def delete_trade(
     await _bump_revision(db, workspace, expected_revision)
     # результаты прошлых расчётов остаются: trade_id в них станет NULL (ON DELETE SET NULL)
     await db.delete(trade)
-    await db.flush()
+    await _commit(db, workspace)

@@ -25,8 +25,6 @@ ERRORS = error_responses(401, 403, 404, 409, 422, 503)
 )
 async def add_trade(body: TradeCreate, workspace: OwnWorkspaceForChange, db: Db):
     await service.add_trade(db, workspace, body.isin, body.quantity, body.expected_revision)
-    await db.commit()
-    await db.refresh(workspace)
     return await workspace_out(db, workspace)
 
 
@@ -42,8 +40,6 @@ async def update_trade(
     await service.update_trade(
         db, workspace, trade_id, body.expected_revision, isin=body.isin, quantity=body.quantity
     )
-    await db.commit()
-    await db.refresh(workspace)
     return await workspace_out(db, workspace)
 
 
@@ -61,6 +57,4 @@ async def delete_trade(
     expected_revision: Annotated[int, Query(ge=0)],
 ):
     await service.delete_trade(db, workspace, trade_id, expected_revision)
-    await db.commit()
-    await db.refresh(workspace)
     return await workspace_out(db, workspace)

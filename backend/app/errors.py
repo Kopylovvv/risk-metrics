@@ -9,6 +9,7 @@ from sqlalchemy.exc import InterfaceError, OperationalError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.schemas.common import ErrorDetail, ErrorOut
+from app.services.calculation import WorkspaceEmpty
 from app.services.workspaces import RevisionConflict, TradeNotFound
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,10 @@ def origin_not_allowed() -> ApiError:
 def workspace_not_found() -> ApiError:
     # 404, а не 403: не раскрываем, что чужой набор существует
     return ApiError(404, "WORKSPACE_NOT_FOUND", "Набор сделок не найден")
+
+
+def calculation_not_found() -> ApiError:
+    return ApiError(404, "CALCULATION_NOT_FOUND", "Расчёт не найден")
 
 
 def instrument_not_found() -> ApiError:
@@ -89,6 +94,11 @@ def register_error_handlers(app: FastAPI) -> None:
     async def _trade_missing(_: Request, __: TradeNotFound) -> JSONResponse:
         return _json(404, ErrorOut(code="TRADE_NOT_FOUND", message="Сделка не найдена"))
 
+    @app.exception_handler(WorkspaceEmpty)
+    async def _empty(_: Request, __: WorkspaceEmpty) -> JSONResponse:
+        message = "В наборе нет сделок для расчёта"
+        return _json(422, ErrorOut(code="WORKSPACE_EMPTY", message=message))
+
     @app.exception_handler(StarletteHTTPException)
     async def _http(_: Request, exc: StarletteHTTPException) -> JSONResponse:
         code = _HTTP_CODES.get(exc.status_code, "HTTP_ERROR")
@@ -113,9 +123,12 @@ def register_error_handlers(app: FastAPI) -> None:
 _DESCRIPTIONS = {
     401: "SESSION_REQUIRED: нет cookie сессии",
     403: "CSRF_TOKEN_INVALID / ORIGIN_NOT_ALLOWED",
-    404: "WORKSPACE_NOT_FOUND (в т.ч. чужой набор), TRADE_NOT_FOUND, INSTRUMENT_NOT_FOUND",
+    404: (
+        "WORKSPACE_NOT_FOUND (в т.ч. чужой набор), TRADE_NOT_FOUND, CALCULATION_NOT_FOUND,"
+        " INSTRUMENT_NOT_FOUND"
+    ),
     409: "REVISION_CONFLICT: набор изменился, expected_revision устарел",
-    422: "VALIDATION_ERROR: неверный ввод, details указывает поле",
+    422: "VALIDATION_ERROR: неверный ввод, details указывает поле; WORKSPACE_EMPTY: нет сделок",
     503: "DATABASE_UNAVAILABLE: нет соединения с PostgreSQL",
 }
 
