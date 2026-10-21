@@ -1,4 +1,4 @@
-"""Расчёт DV01 через API: от сделок до сохранённого результата"""
+"""Расчёт DV01 через API: от сделок до сохранённого результата, история расчётов"""
 
 import uuid
 from datetime import UTC, date, datetime
@@ -6,9 +6,11 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import Engine, text
+from sqlalchemy.exc import IntegrityError
 
 from app import contracts
 from app.api.deps import get_fx_rates, get_market_data, get_risk_calculator
+from app.contracts import Dv01Input
 from app.enums import CouponType, Provider, RowErrorCode
 from app.stubs.risk_core import calc_dv01
 from tests.test_api_trades import add, open_workspace, second_client, trades_url
@@ -262,6 +264,27 @@ async def test_history_keeps_own_inputs_after_trade_changes(api, market_in_db, s
 # --- разрешённые ошибки строк ------------------------------------------------------
 
 
+async def test_workspace_points_to_last_calculation(api, market_in_db, sources):
+    """После перезагрузки страницы фронт находит последний расчёт через набор"""
+    ws_id, h, rev = await workspace_with(api, (FIXED, 100))
+    assert (await api.get(f"/api/v1/workspaces/{ws_id}")).json()["last_calculation_id"] is None
+
+    first = (await calculate(api, ws_id, h, rev)).json()["id"]
+    second = (await calculate(api, ws_id, h, rev)).json()["id"]
+    reopened = (await api.post("/api/v1/workspaces")).json()  # та же cookie: тот же набор
+    assert reopened["id"] == ws_id
+    assert reopened["last_calculation_id"] == second != first
+    restored = await api.get(f"/api/v1/calculations/{reopened['last_calculation_id']}")
+    assert restored.json()["results"][0]["quantity"] == 100
+
+    # изменение набора не стирает ссылку: старый результат по-прежнему доступен
+    trade_id = restored.json()["results"][0]["trade_id"]
+    r = await api.patch(
+        trades_url(ws_id, trade_id), json={"quantity": 5, "expected_revision": rev}, headers=h
+    )
+    assert r.json()["last_calculation_id"] == second
+
+
 async def test_partial_result_has_no_total(api, market_in_db, sources):
     ws_id, h, rev = await workspace_with(api, (FIXED, 100), (UNKNOWN, 1))
     calc = (await calculate(api, ws_id, h, rev)).json()
@@ -359,6 +382,13 @@ async def test_missing_fx_rate(api, sources, engine):
     assert row["status"] == "success" and Decimal(row["fx_rate_used"]) == 90
 
 
+async def test_valuation_date_in_future_is_rejected(api, market_in_db, sources):
+    ws_id, h, rev = await workspace_with(api, (FIXED, 1))
+    tomorrow = date.fromordinal(date.today().toordinal() + 1)
+    r = await calculate(api, ws_id, h, rev, valuation_date=tomorrow)
+    assert (r.status_code, r.json()["details"][0]["field"]) == (422, "body.valuation_date")
+
+
 async def test_valuation_date_defaults_to_today(api, sources, engine):
     insert_snapshot(engine, insert_instrument(engine, FIXED), data_as_of=date.today())
     ws_id, h, rev = await workspace_with(api, (FIXED, 1))
@@ -451,3 +481,117 @@ def test_default_sources_are_unavailable_stubs():
 
     assert isinstance(get_market_data(), NoMarketDataSource)
     assert get_risk_calculator() is calc_dv01
+
+
+# --- история: старые результаты не меняются задним числом ----------------------
+
+
+RESULT_COLUMNS = (
+    "id, trade_id, market_data_snapshot_id, fx_rate_id, input_isin, input_quantity,"
+    " nominal_used, price_pct_used, fx_rate_used, current_fair_value, duration_used,"
+    " convexity_used, metric_value, status, error_code"
+)
+
+
+def stored_rows(engine: Engine, run_id: str) -> list:
+    with engine.connect() as conn:
+        return conn.execute(
+            text(
+                f"SELECT {RESULT_COLUMNS} FROM calculation_results"
+                " WHERE run_id = :id ORDER BY input_isin"
+            ),
+            {"id": run_id},
+        ).all()
+
+
+def stored_run(engine: Engine, run_id: str):
+    with engine.connect() as conn:
+        return conn.execute(
+            text("SELECT * FROM calculation_runs WHERE id = :id"), {"id": run_id}
+        ).one()
+
+
+async def test_old_result_does_not_change_after_anything(api, market_in_db, sources, engine):
+    ws_id, h, rev = await workspace_with(api, (FIXED, 100), (FLOATER, 299), (USD_BOND, -10))
+    old = (await calculate(api, ws_id, h, rev)).json()
+    rows_before = stored_rows(engine, old["id"])
+    run_before = stored_run(engine, old["id"])
+
+    # меняем всё, что можно: сделки, рынок, курс, считаем заново
+    trades = (await api.get(f"/api/v1/workspaces/{ws_id}")).json()["trades"]
+    await api.patch(
+        trades_url(ws_id, trades[0]["id"]), json={"quantity": 1, "expected_revision": 3}, headers=h
+    )
+    await api.delete(trades_url(ws_id, trades[1]["id"]), params={"expected_revision": 4}, headers=h)
+    with engine.begin() as conn:
+        instrument_id = conn.execute(
+            text("SELECT id FROM instruments WHERE isin = :isin"), {"isin": FIXED}
+        ).scalar_one()
+    insert_snapshot(engine, instrument_id, data_as_of=date(2026, 10, 21), price_pct=80)
+    new = (await calculate(api, ws_id, h, 5, valuation_date=date(2026, 10, 21))).json()
+    assert new["results"][0]["price_pct_used"] == "80"
+
+    # старый расчёт тот же: и в API, и строка в строку в БД
+    again = (await api.get(f"/api/v1/calculations/{old['id']}")).json()
+
+    def without_trade_id(calc: dict) -> list[dict]:
+        return sorted(({**r, "trade_id": None} for r in calc["results"]), key=lambda r: r["isin"])
+
+    assert without_trade_id(again) == without_trade_id(old)
+    assert again["total_value"] == old["total_value"]
+    rows_after = stored_rows(engine, old["id"])
+    assert [{**r._asdict(), "trade_id": None} for r in rows_after] == [
+        {**r._asdict(), "trade_id": None} for r in rows_before
+    ]
+    deleted = {r.input_isin: r.trade_id for r in rows_after}
+    assert deleted[FLOATER] is None  # ссылка на удалённую сделку обнулилась, данные остались
+    assert stored_run(engine, old["id"]) == run_before
+
+
+async def test_stored_result_can_be_recomputed(api, market_in_db, sources, engine):
+    """По сохранённым входам и параметрам формула даёт ровно сохранённый результат"""
+    ws_id, h, rev = await workspace_with(api, (FIXED, 100), (FLOATER, -299), (USD_BOND, 7))
+    calc = (await calculate(api, ws_id, h, rev)).json()
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT r.*, s.coupon_type, s.coupon_frequency, s.duration_mod, s.convexity"
+                " FROM calculation_results r"
+                " JOIN market_data_snapshots s ON s.id = r.market_data_snapshot_id"
+                " WHERE r.run_id = :id"
+            ),
+            {"id": calc["id"]},
+        ).all()
+    assert len(rows) == 3
+    total = Decimal(0)
+    for row in rows:
+        again = calc_dv01(
+            Dv01Input(
+                quantity=int(row.input_quantity),
+                nominal=row.nominal_used,
+                price_pct=row.price_pct_used,
+                fx_rate=row.fx_rate_used,
+                duration_mod=row.duration_mod,
+                convexity=row.convexity,
+                coupon_type=CouponType(row.coupon_type),
+                coupon_frequency=row.coupon_frequency,
+            )
+        )
+        assert again.current_fair_value == row.current_fair_value
+        assert again.duration_used == row.duration_used
+        assert again.convexity_used == row.convexity_used
+        assert again.dv01 == row.metric_value
+        total += row.metric_value
+    assert Decimal(calc["total_value"]) == total
+    assert calc["valuation_date"] == DAY.isoformat()
+
+
+async def test_used_market_data_cannot_be_deleted(api, market_in_db, sources, engine):
+    """Снимок и курс, на которые ссылается расчёт, БД удалить не даст"""
+    ws_id, h, rev = await workspace_with(api, (USD_BOND, 1))
+    calc = (await calculate(api, ws_id, h, rev)).json()
+    assert calc["status"] == "success"
+    for table in ("market_data_snapshots", "fx_rates"):
+        with pytest.raises(IntegrityError), engine.begin() as conn:
+            conn.execute(text(f"DELETE FROM {table}"))

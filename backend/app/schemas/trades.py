@@ -59,6 +59,13 @@ class WorkspaceOut(BaseModel):
     id: UUID
     revision: int = Field(description="Растёт на 1 при каждом изменении набора")
     trades: list[TradeOut]
+    last_calculation_id: UUID | None = Field(
+        None,
+        description=(
+            "Последний расчёт этого набора (GET /api/v1/calculations/{id}); null, если не считали."
+            " Нужен, чтобы после перезагрузки страницы показать результат"
+        ),
+    )
     created_at: datetime
     updated_at: datetime
 

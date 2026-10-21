@@ -2,14 +2,13 @@
 
 import hashlib
 import uuid
-from collections.abc import Iterable
 
 from sqlalchemy import func, select, update
-from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db import Instrument, MarketDataSnapshot, Trade, Workspace
+from app.db import Trade, Workspace
+from app.services.market import find_instrument
 
 
 class RevisionConflict(Exception):
@@ -48,31 +47,6 @@ async def list_trades(db: AsyncSession, workspace_id: uuid.UUID) -> list[Trade]:
         .execution_options(populate_existing=True)
     )
     return list(await db.scalars(query))
-
-
-async def latest_snapshots(
-    db: AsyncSession, instrument_ids: Iterable[uuid.UUID]
-) -> dict[uuid.UUID, MarketDataSnapshot]:
-    """Последний снимок по каждому инструменту (для карточки бумаги в ответе)"""
-    ids = set(instrument_ids)
-    if not ids:
-        return {}
-    # DISTINCT ON оставляет по одной строке на инструмент: самую свежую по дате данных
-    query = (
-        select(MarketDataSnapshot)
-        .where(MarketDataSnapshot.instrument_id.in_(ids))
-        .order_by(
-            MarketDataSnapshot.instrument_id,
-            MarketDataSnapshot.data_as_of.desc(),
-            MarketDataSnapshot.retrieved_at.desc(),
-        )
-        .ext(distinct_on(MarketDataSnapshot.instrument_id))
-    )
-    return {snap.instrument_id: snap for snap in await db.scalars(query)}
-
-
-async def find_instrument(db: AsyncSession, isin: str) -> Instrument | None:
-    return await db.scalar(select(Instrument).where(Instrument.isin == isin))
 
 
 async def _commit(db: AsyncSession, workspace: Workspace) -> None:

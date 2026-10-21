@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.enums import Provider, RowErrorCode, RowStatus, RunStatus
 from app.schemas.common import DecimalStr
@@ -11,7 +11,17 @@ from app.schemas.common import DecimalStr
 
 class CalculationRequest(BaseModel):
     expected_revision: int = Field(ge=0)
-    valuation_date: date | None = Field(None, description="Дата оценки; по умолчанию сегодня")
+    valuation_date: date | None = Field(
+        None, description="Дата оценки, не позже сегодняшней; по умолчанию сегодня"
+    )
+
+    @field_validator("valuation_date")
+    @classmethod
+    def _not_in_future(cls, value: date | None) -> date | None:
+        # рыночных данных из будущего не бывает: такой расчёт ничего не значит
+        if value is not None and value > date.today():
+            raise ValueError("Дата оценки не может быть позже сегодняшней")
+        return value
 
     model_config = {
         "json_schema_extra": {

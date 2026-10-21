@@ -1,0 +1,98 @@
+# Проверки backend на настоящем PostgreSQL 18.6 из compose.yaml:
+# Ruff, миграции на пустой базе (вверх, совпадение с моделями, откат и снова вверх),
+# все тесты и сборка Docker-образа
+name: Backend
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "backend/**"
+      - "compose.yaml"
+      - ".github/workflows/backend.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - "compose.yaml"
+      - ".github/workflows/backend.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Lint, migrations and tests on PostgreSQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      COMPOSE_PROJECT_NAME: risk-metrics-backend-ci
+      POSTGRES_DB: risk_metrics_ci
+      POSTGRES_USER: risk_metrics_ci
+      POSTGRES_PASSWORD: ci_only_password
+      # база из compose проброшена на порт 5433 машины CI
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5433"
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Ruff
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Start PostgreSQL
+        working-directory: .
+        run: docker compose up -d --wait --wait-timeout 90 db
+
+      - name: Migrations on empty database
+        run: |
+          alembic upgrade head
+          alembic check
+          alembic downgrade base
+          alembic upgrade head
+
+      - name: Tests
+        run: pytest -v --junitxml=pytest-report.xml
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-pytest-report
+          path: backend/pytest-report.xml
+          if-no-files-found: ignore
+
+      - name: Build Docker image
+        run: docker build -t risk-metrics-backend .
+
+      - name: Show PostgreSQL logs on failure
+        if: failure()
+        working-directory: .
+        run: docker compose logs --no-color --tail=100 db
+
+      - name: Remove temporary CI database
+        if: always()
+        working-directory: .
+        run: docker compose down --volumes --remove-orphans

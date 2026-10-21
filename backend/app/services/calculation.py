@@ -8,14 +8,13 @@
 
 import logging
 import uuid
-from collections.abc import Awaitable, Iterable
+from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from typing import TypeVar
 
 from sqlalchemy import func, select, update
-from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -31,6 +30,7 @@ from app.db import (
     Workspace,
 )
 from app.enums import RowErrorCode, RowStatus, RunStatus
+from app.services.market import latest_rates, latest_snapshots
 from app.services.workspaces import RevisionConflict
 
 logger = logging.getLogger(__name__)
@@ -120,7 +120,7 @@ async def _read_inputs(
     instruments = {
         i.isin: i for i in await db.scalars(select(Instrument).where(Instrument.isin.in_(isins)))
     }
-    snapshots = await _snapshots_on(db, (i.id for i in instruments.values()), valuation_date)
+    snapshots = await latest_snapshots(db, (i.id for i in instruments.values()), valuation_date)
     markets = {}
     for isin in isins:
         instrument = instruments.get(isin)
@@ -130,43 +130,10 @@ async def _read_inputs(
     currencies = {m.currency for m in markets.values()} - {None, BASE_CURRENCY}
     rates = {
         cur: _Fx(rate=rate)
-        for cur, rate in (await _rates_on(db, currencies, valuation_date)).items()
+        for cur, rate in (await latest_rates(db, currencies, valuation_date)).items()
     }
     await db.commit()  # конец чтения: дальше могут быть долгие внешние запросы
     return _Prepared(trades, markets, rates)
-
-
-async def _snapshots_on(
-    db: AsyncSession, instrument_ids: Iterable[uuid.UUID], on: date
-) -> dict[uuid.UUID, MarketDataSnapshot]:
-    """Последний снимок каждого инструмента с датой данных не позже даты оценки"""
-    ids = set(instrument_ids)
-    if not ids:
-        return {}
-    query = (
-        select(MarketDataSnapshot)
-        .where(MarketDataSnapshot.instrument_id.in_(ids), MarketDataSnapshot.data_as_of <= on)
-        .order_by(
-            MarketDataSnapshot.instrument_id,
-            MarketDataSnapshot.data_as_of.desc(),
-            MarketDataSnapshot.retrieved_at.desc(),
-        )
-        .ext(distinct_on(MarketDataSnapshot.instrument_id))
-    )
-    return {s.instrument_id: s for s in await db.scalars(query)}
-
-
-async def _rates_on(db: AsyncSession, currencies: set[str], on: date) -> dict[str, FxRate]:
-    """Последний курс каждой валюты не позже даты оценки"""
-    if not currencies:
-        return {}
-    query = (
-        select(FxRate)
-        .where(FxRate.currency.in_(currencies), FxRate.rate_date <= on)
-        .order_by(FxRate.currency, FxRate.rate_date.desc(), FxRate.retrieved_at.desc())
-        .ext(distinct_on(FxRate.currency))
-    )
-    return {r.currency: r for r in await db.scalars(query)}
 
 
 # --- шаг 2: внешние источники (транзакции нет) ------------------------------------
@@ -406,6 +373,15 @@ def _result_row(
     row.convexity_used = result.convexity_used
     row.metric_value = result.dv01
     return row
+
+
+async def latest_calculation_id(db: AsyncSession, workspace_id: uuid.UUID) -> uuid.UUID | None:
+    return await db.scalar(
+        select(CalculationRun.id)
+        .where(CalculationRun.workspace_id == workspace_id)
+        .order_by(CalculationRun.created_at.desc(), CalculationRun.id.desc())
+        .limit(1)
+    )
 
 
 # --- чтение сохранённого результата ------------------------------------------------
