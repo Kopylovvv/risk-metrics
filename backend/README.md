@@ -1,68 +1,116 @@
-# Backend — модуль расчёта DV01
+# Backend: модуль расчёта DV01
 
-Этап: модели API, контракт с модулями данных и расчёта, схема БД с миграциями. Роутеров пока нет
+Готово: схема БД с миграциями, API набора сделок (создание, чтение, изменение, удаление),
+карточка инструмента из БД. Расчёт DV01 будет следующим шагом (S2-11)
 
 ## Структура
 
 ```
 app/
-  config.py        адрес PostgreSQL из окружения / .env в корне репозитория
-  contracts.py     общий интерфейс backend ↔ market_data / risk_core (согласовать с Андреем)
+  main.py          приложение FastAPI, CORS, подключение роутеров
+  config.py        настройки из окружения / .env в корне репозитория
+  errors.py        единый формат ошибок {code, message, details}
+  contracts.py     общий интерфейс backend ↔ market_data / risk_core (с Андреем)
   schemas/         Pydantic-модели запросов и ответов API
-  db/
-    base.py        Base и правила именования ограничений
-    models.py      7 таблиц схемы v4 (SQLAlchemy 2)
-    session.py     асинхронное подключение приложения (psycopg 3), get_session
-migrations/        Alembic: env.py и версии схемы
-  versions/20261020_0001_initial_schema_v4.py
-tests/             проверки схемы и ограничений на настоящем PostgreSQL
-alembic.ini
+  api/             роутеры: workspaces, trades, instruments, health; в deps.py сессия и CSRF
+  services/        работа с наборами и сделками в БД, проверка revision
+  db/              модели SQLAlchemy (схема v4) и подключение
+migrations/        Alembic: 0001 схема v4, 0002 короткие имена внешних ключей
+tests/             тесты на настоящем PostgreSQL: схема, ограничения, API
 ```
 
-## Запуск БД и миграций
+## Запуск
 
-1. Поднять PostgreSQL из `compose.yaml` в корне репозитория (ветка Александра
-   `infra/docker-environment`): `cp .env.example .env`, заполнить пароль,
-   `docker compose up -d --wait`. База доступна на `localhost:5433`
-2. Установить зависимости и применить миграции (из папки `backend`):
+1. База: в корне репозитория `cp .env.example .env`, вписать пароль,
+   `docker compose up -d --wait` (PostgreSQL на `localhost:5433`)
+2. В папке `backend`:
 
 ```bash
 python -m venv .venv && .venv\Scripts\activate      # Linux/macOS: source .venv/bin/activate
 pip install -r requirements-dev.txt
 alembic upgrade head
+uvicorn app.main:app --reload
 ```
 
-Адрес БД: `DATABASE_URL` (например `postgresql+psycopg://user:pass@localhost:5433/risk_metrics`)
-или переменные `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`
-(по умолчанию `localhost`), `POSTGRES_PORT` (по умолчанию `5433`). Файл `.env` из корня
-репозитория подхватывается автоматически
+Контракт и проверка запросов: http://localhost:8000/docs
 
-Полезные команды: `alembic current`, `alembic downgrade base`, `alembic upgrade head --sql`
-(показать SQL без подключения), `alembic check` (модели совпадают с миграциями)
+## API
+
+| Метод | Путь | Что делает |
+|---|---|---|
+| POST | `/api/v1/workspaces` | открыть модуль: cookie сессии + `csrf_token`; с существующей cookie вернёт тот же набор (200) |
+| GET | `/api/v1/workspaces/{id}` | набор, `revision`, сделки с карточками инструментов |
+| POST | `/api/v1/workspaces/{id}/trades` | добавить сделку `{isin, quantity, expected_revision}` |
+| PATCH | `/api/v1/workspaces/{id}/trades/{trade_id}` | изменить `isin` и/или `quantity` (+ `expected_revision`) |
+| DELETE | `/api/v1/workspaces/{id}/trades/{trade_id}?expected_revision=N` | удалить сделку |
+| GET | `/api/v1/instruments/{isin}` | карточка облигации из БД |
+| GET | `/health/live`, `/health/ready` | процесс жив / база доступна |
+
+Изменения набора возвращают весь набор с новым `revision`
+
+Правила:
+
+- `quantity`: целое ≠ 0, |quantity| ≤ 10^15, отрицательное = шорт
+- ISIN: 12 символов (2 буквы страны, 9 букв или цифр, контрольная цифра по алгоритму Луна);
+  пробелы и регистр нормализуются
+- ISIN, которого нет в справочнике, сохраняется: `instrument = null`
+- деньги в JSON передаются десятичными строками; нет значения → `null`, не 0
+- набор доступен только своей сессии (HttpOnly-cookie `rm_session`)
+- изменяющие запросы: заголовок `X-CSRF-Token` и, если браузер прислал `Origin`,
+  он должен быть из `ALLOWED_ORIGINS`
+
+Ошибки (`{"code", "message", "details"}`):
+
+| HTTP | code | когда |
+|---|---|---|
+| 401 | `SESSION_REQUIRED` | нет cookie сессии |
+| 403 | `CSRF_TOKEN_INVALID`, `ORIGIN_NOT_ALLOWED` | нет/неверный токен, чужой сайт |
+| 404 | `WORKSPACE_NOT_FOUND` | набора нет или он чужой |
+| 404 | `TRADE_NOT_FOUND`, `INSTRUMENT_NOT_FOUND` | сделки нет в этом наборе / бумаги нет в справочнике |
+| 409 | `REVISION_CONFLICT` | набор уже изменён: обновить и повторить |
+| 422 | `VALIDATION_ERROR` | неверный ввод; в `details[].field` указано поле |
+| 404, 405 | `NOT_FOUND`, `METHOD_NOT_ALLOWED` | нет такого адреса / метода |
+| 503 | `DATABASE_UNAVAILABLE` | нет соединения с PostgreSQL |
+| 500 | `INTERNAL_ERROR` | непредвиденная ошибка (подробности только в логе сервера) |
+
+### Для фронта (Егор)
+
+- при открытии страницы `POST /api/v1/workspaces` с `credentials: "include"`,
+  запомнить `id` и `csrf_token`
+- во всех POST/PATCH/DELETE передавать заголовок `X-CSRF-Token` и `expected_revision` из последнего ответа
+- проще всего проксировать `/api` через Vite (`server.proxy`), тогда cookie работает без CORS;
+  прямые запросы с `localhost:5173` тоже разрешены
+
+## Настройки (переменные окружения или `.env` в корне)
+
+| Переменная | По умолчанию | Назначение |
+|---|---|---|
+| `DATABASE_URL` | не задан | полный адрес БД; если задан, главнее остальных |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | из `.env` | как в `compose.yaml` |
+| `POSTGRES_HOST`, `POSTGRES_PORT` | `localhost`, `5433` | внутри сети compose: `db`, `5432` |
+| `ALLOWED_ORIGINS` | `localhost`/`127.0.0.1` на портах 5173 и 8000 | откуда можно слать изменения |
+| `COOKIE_SECURE` | `false` | `true` на сервере с HTTPS |
+
+Полезные команды Alembic: `alembic current`, `alembic downgrade base`,
+`alembic upgrade head --sql` (SQL без подключения), `alembic check` (модели = миграции)
 
 ## Docker-образ backend
-
-`Dockerfile` в папке `backend` собирает образ с кодом и миграциями (Python 3.13).
-Сервис в `compose.yaml` пока не добавлен — это задача окружения
 
 ```bash
 # из корня репозитория
 docker build -t risk-metrics-backend backend
-# применить миграции к базе из compose (она проброшена на порт 5433 компьютера)
-docker run --rm --env-file .env -e POSTGRES_HOST=host.docker.internal -e POSTGRES_PORT=5433 risk-metrics-backend
+# миграции
+docker run --rm --env-file .env -e POSTGRES_HOST=host.docker.internal -e POSTGRES_PORT=5433 risk-metrics-backend alembic upgrade head
+# API на http://localhost:8000
+docker run --rm -p 8000:8000 --env-file .env -e POSTGRES_HOST=host.docker.internal -e POSTGRES_PORT=5433 risk-metrics-backend
 ```
 
-Тесты в контейнере (стадия `test`, база из compose должна быть запущена):
+Тесты в контейнере (стадия `test`, база должна быть запущена):
 
 ```bash
 docker build --target test -t risk-metrics-backend-test backend
 docker run --rm --env-file .env -e POSTGRES_HOST=host.docker.internal -e POSTGRES_PORT=5433 risk-metrics-backend-test
 ```
-
-Обычная сборка без `--target` стадию `test` пропускает: в рабочий образ тесты и pytest не попадают
-
-Внутри сети compose адрес базы будет `POSTGRES_HOST=db`, `POSTGRES_PORT=5432`.
-Пока нет `app/main.py`, команда образа по умолчанию — `alembic upgrade head`
 
 ## Тесты
 
@@ -70,10 +118,14 @@ docker run --rm --env-file .env -e POSTGRES_HOST=host.docker.internal -e POSTGRE
 pytest
 ```
 
-Тесты создают отдельную пустую базу `<POSTGRES_DB>_test`, ставят в неё схему миграциями
-и удаляют после прогона. Пользователю БД нужно право CREATE DATABASE (у пользователя из
-compose оно есть). Проверяется: схема и enum-ы, совпадение моделей и миграций,
-downgrade/upgrade, точное сохранение входов и результатов, все ограничения ниже
+Создают отдельную базу `<POSTGRES_DB>_test`, ставят схему миграциями и удаляют её после
+прогона (нужно право CREATE DATABASE, у пользователя из compose оно есть). Проверяется:
+
+- схема, enum-ы, совпадение моделей и миграций, downgrade/upgrade
+- ограничения БД и точное сохранение входов и результатов
+- API: CRUD сделок с записью в PostgreSQL, проверка ISIN и количества, примеры из `/docs`,
+  409 при устаревшем `revision` (в том числе параллельные запросы), 401/403/404 для
+  чужих наборов, без cookie, без CSRF-токена и с чужого Origin
 
 ## Схема БД (v4) и ограничения
 
@@ -82,9 +134,9 @@ downgrade/upgrade, точное сохранение входов и резул�
 `run_status`, `row_status`
 
 - Уникальность: `instruments.isin`, `workspaces.session_key_hash`,
-  снимок `(instrument_id, data_as_of, provider)` — `uq_snapshot_per_day`,
+  снимок `(instrument_id, data_as_of, provider)` (`uq_snapshot_per_day`),
   курс `(currency, rate_date, source)`
-- Внешние ключи по схеме; `calculation_results.trade_id` — `ON DELETE SET NULL`
+- Внешние ключи по схеме; у `calculation_results.trade_id` стоит `ON DELETE SET NULL`
   (история расчёта остаётся в `input_*`)
 - CHECK сверх DBML (правила модели):
   - `trades.quantity <> 0`, `calculation_results.input_quantity <> 0`
@@ -93,14 +145,4 @@ downgrade/upgrade, точное сохранение входов и резул�
   - `calculation_runs`: `total_value` заполнен тогда и только тогда, когда `status = success`
   - `calculation_results`: `success` → есть CFV и `metric_value`, нет `error_code`;
     `failed` → есть `error_code`, `metric_value IS NULL` (не 0)
-- Деньги и коэффициенты — `NUMERIC` без ограничения точности, количество — `numeric(20,0)`
-
-## Правила моделей API
-
-- `quantity` — целое ≠ 0, |quantity| ≤ 10^15, отрицательное = шорт
-- ISIN — 12 символов: 2 буквы страны, 9 букв/цифр, контрольная цифра (алгоритм Луна)
-- деньги в JSON — десятичные строки; нет значения → `null`, не 0
-- изменения набора передают `expected_revision`
-- результат строки — `metric_value` (DV01, ₽), итог — `total_value` (как в БД)
-- статус расчёта: `success` (есть `total_value`), `partial` / `failed` (`total_value = null`)
-- ошибка: `{"code", "message", "details"}`
+- Деньги и коэффициенты хранятся в `NUMERIC` без ограничения точности, количество в `numeric(20,0)`

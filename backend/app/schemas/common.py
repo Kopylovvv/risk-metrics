@@ -36,7 +36,7 @@ def _normalize_isin(value: object) -> object:
 
 def _validate_isin(value: str) -> str:
     if not _ISIN_RE.match(value):
-        raise ValueError("ISIN: 12 символов — 2 буквы страны, 9 букв/цифр, контрольная цифра")
+        raise ValueError("ISIN: 12 символов (2 буквы страны, 9 букв или цифр, контрольная цифра)")
     if not isin_check_digit_ok(value):
         raise ValueError("ISIN: неверная контрольная цифра")
     return value
@@ -49,7 +49,7 @@ Isin = Annotated[
     Field(examples=["RU000A1038V6"]),
 ]
 
-# Деньги и коэффициенты в JSON — десятичной строкой (без потери точности)
+# Деньги и коэффициенты в JSON передаются десятичной строкой, без потери точности
 DecimalStr = Annotated[
     Decimal,
     PlainSerializer(lambda v: format(v, "f"), return_type=str, when_used="json"),
@@ -73,7 +73,7 @@ Quantity = Annotated[
         strict=True,
         ge=-QUANTITY_LIMIT,
         le=QUANTITY_LIMIT,
-        description="Количество бумаг, целое, ≠ 0; отрицательное — короткая позиция (шорт)",
+        description="Количество бумаг, целое, ≠ 0; отрицательное означает короткую позицию (шорт)",
         examples=[100, -100],
     ),
 ]

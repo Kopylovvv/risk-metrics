@@ -1,4 +1,4 @@
-"""Адрес PostgreSQL: DATABASE_URL или переменные POSTGRES_* из .env (как в compose.yaml)"""
+"""Настройки из окружения: адрес PostgreSQL, разрешённые Origin, cookie сессии"""
 
 import os
 from pathlib import Path
@@ -34,3 +34,21 @@ def database_url() -> URL:
         port=int(os.getenv("POSTGRES_PORT", "5433")),  # порт, проброшенный в compose.yaml
         database=os.getenv("POSTGRES_DB", "risk_metrics"),
     )
+
+
+# Откуда браузеру можно слать изменяющие запросы: фронт на Vite (5173) и Swagger (8000)
+DEFAULT_ORIGINS = (
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000"
+)
+
+
+def allowed_origins() -> list[str]:
+    load_env_file()
+    raw = os.getenv("ALLOWED_ORIGINS", DEFAULT_ORIGINS)
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
+def cookie_secure() -> bool:
+    """Secure-cookie только по HTTPS: на сервере COOKIE_SECURE=true, локально false"""
+    load_env_file()
+    return os.getenv("COOKIE_SECURE", "false").lower() == "true"

@@ -1,6 +1,6 @@
 [project]
 name = "risk-module-backend"
-version = "0.3.0"
+version = "0.4.0"
 requires-python = ">=3.11"
 
 [tool.ruff]
@@ -13,3 +13,4 @@ select = ["E", "F", "I", "B", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+asyncio_mode = "auto"

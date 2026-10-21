@@ -104,7 +104,7 @@ class Trade(Base):
     # NULL, если бумага не найдена в источниках: сделка всё равно сохраняется
     instrument_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("instruments.id"))
     isin: Mapped[str] = mapped_column(String(12), nullable=False)  # как ввёл пользователь
-    quantity: Mapped[int] = mapped_column(QuantityType, nullable=False)  # < 0 — шорт
+    quantity: Mapped[int] = mapped_column(QuantityType, nullable=False)  # < 0 означает шорт
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
 
@@ -166,7 +166,7 @@ class CalculationRun(Base):
 
     __tablename__ = "calculation_runs"
     __table_args__ = (
-        # итог есть только у успешного расчёта, у partial/failed — NULL
+        # итог есть только у успешного расчёта, у partial/failed он NULL
         CheckConstraint(
             "(status = 'success') = (total_value IS NOT NULL)", name="total_only_on_success"
         ),
@@ -175,9 +175,8 @@ class CalculationRun(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id"), nullable=False)
-    workspace_revision: Mapped[int] = mapped_column(
-        Integer, nullable=False
-    )  # набор на момент расчёта
+    # revision набора на момент расчёта
+    workspace_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     measure_code: Mapped[str] = mapped_column(String(32), nullable=False)  # DV01
     methodology_version: Mapped[str] = mapped_column(String(32), nullable=False)  # dv01-v1
     valuation_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -214,9 +213,8 @@ class CalculationResult(Base):
     market_data_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("market_data_snapshots.id")
     )
-    fx_rate_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("fx_rates.id")
-    )  # NULL для рублёвой бумаги
+    # NULL для рублёвой бумаги (курс = 1)
+    fx_rate_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fx_rates.id"))
     # копия входов сделки на момент расчёта: старый результат не меняется задним числом
     input_isin: Mapped[str] = mapped_column(String(12), nullable=False)
     input_quantity: Mapped[int] = mapped_column(QuantityType, nullable=False)

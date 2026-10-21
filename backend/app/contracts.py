@@ -2,16 +2,16 @@
 
 Кто за что отвечает:
 
-* ``market_data`` (Андрей) — адаптеры Cbonds и RuData, порядок Cbonds -> RuData,
+* ``market_data`` (Андрей): адаптеры Cbonds и RuData, порядок Cbonds -> RuData,
   нормализация ответа источника в ``MarketSnapshot`` (единицы, даты, полнота)
   Сам в БД не пишет
-* ``risk_core`` (Андрей) — чистая функция ``calc_dv01``: только арифметика на Decimal,
+* ``risk_core`` (Андрей): чистая функция ``calc_dv01``: только арифметика на Decimal,
   без сети, БД, текущей даты и глобального состояния
-* backend (Семён) — API, сессия и доступ к набору, revision, поиск снимка в БД,
+* backend (Семён): API, сессия и доступ к набору, revision, поиск снимка в БД,
   вызов адаптеров при его отсутствии, сохранение снимков и результатов,
   статус расчёта и итог total_value = Σ metric_value
 
-Все денежные величины в ``Dv01Result`` — в рублях
+Все денежные величины в ``Dv01Result`` указаны в рублях
 Значения не округляются: округление (если будет) делается только при выводе
 """
 
@@ -63,11 +63,11 @@ class InstrumentInfo:
 class MarketSnapshot:
     """Рыночные параметры на дату (таблица market_data_snapshots)
 
-    Нормализация — обязанность адаптера:
-    * nominal — текущий номинал ОДНОЙ бумаги в валюте ``currency``;
-    * price_pct — чистая котировка в % от номинала (95.5, а не 0.955);
-    * accrued_interest — НКД на одну бумагу, только для справки, в CFV не входит;
-    * duration_mod, convexity — как отдал источник; None, если источник не дал
+    Нормализацию делает адаптер:
+    * nominal: текущий номинал ОДНОЙ бумаги в валюте ``currency``;
+    * price_pct: чистая котировка в % от номинала (95.5, а не 0.955);
+    * accrued_interest: НКД на одну бумагу, только для справки, в CFV не входит;
+    * duration_mod, convexity: как отдал источник; None, если источник не дал
     """
 
     isin: str
@@ -103,7 +103,7 @@ class MarketDataError(Exception):
 
 
 class MarketDataProvider(Protocol):
-    """Реализует Андрей. Цепочка Cbonds -> RuData — тоже реализация этого протокола
+    """Реализует Андрей. Цепочка Cbonds -> RuData тоже реализует этот протокол
 
     Методы бросают ``MarketDataError`` с кодами INSTRUMENT_NOT_FOUND,
     MISSING_MARKET_DATA, PROVIDER_UNAVAILABLE или INCOMPATIBLE_MARKET_DATA
@@ -112,7 +112,7 @@ class MarketDataProvider(Protocol):
     async def get_instrument(self, isin: str) -> InstrumentInfo: ...
 
     async def get_snapshot(self, isin: str, as_of: date) -> MarketSnapshot:
-        """Последние данные на дату ``as_of`` или раньше; фактическая дата — в ``data_as_of``"""
+        """Последние данные на дату ``as_of`` или раньше; фактическая дата в ``data_as_of``"""
         ...
 
 
@@ -131,7 +131,7 @@ class FxRateProvider(Protocol):
 class Dv01Input:
     """Всё, что нужно для расчёта одной сделки. Собирает backend"""
 
-    quantity: int  # количество бумаг, != 0; < 0 — шорт
+    quantity: int  # количество бумаг, != 0; < 0 означает шорт
     nominal: Decimal
     price_pct: Decimal  # % от номинала
     fx_rate: Decimal  # к рублю; для RUB = 1
