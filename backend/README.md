@@ -24,10 +24,17 @@ migrations/        Alembic: 0001 схема v4, 0002 короткие имена
 tests/             тесты на настоящем PostgreSQL: схема, ограничения, API
 ```
 
-## Запуск
+## Запуск через Compose
+
+Из корня репозитория: заполнить `.env` по `.env.example` и выполнить
+`docker compose up --build -d --wait`. Compose запускает БД, выполняет миграции
+отдельным сервисом `migrate`, затем запускает backend. API: http://localhost:8000/docs.
+Подробные настройки, логи и проверка окружения: [корневой README](../README.md).
+
+## Запуск Python на компьютере
 
 1. База: в корне репозитория `cp .env.example .env`, вписать пароль,
-   `docker compose up -d --wait` (PostgreSQL на `localhost:5433`)
+   `docker compose up -d --wait db` (PostgreSQL на `localhost:5433`)
 2. В папке `backend`:
 
 ```bash
@@ -189,7 +196,7 @@ PostgreSQL 18.6 из `compose.yaml`, миграции на пустой базе
 
 ## Показ: backend по шагам
 
-1. В корне: `docker compose up -d --wait`; в `backend`: `alembic upgrade head`,
+1. При ручном запуске Python в корне: `docker compose up -d --wait db`; в `backend`: `alembic upgrade head`,
    `python -m app.stubs.demo_data`, `uvicorn app.main:app` (или Docker-образ, см. выше)
 2. http://localhost:8000/docs:
    - `POST /api/v1/workspaces` → `id` и `csrf_token` (вставить токен в заголовок `X-CSRF-Token`)
