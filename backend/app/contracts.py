@@ -63,7 +63,8 @@ class MarketSnapshot:
     Нормализацию делает адаптер:
     * nominal: текущий номинал ОДНОЙ бумаги в валюте ``currency``;
     * price_pct: чистая котировка в % от номинала (95.5, а не 0.955);
-    * accrued_interest: НКД на одну бумагу, только для справки, в CFV не входит;
+    * accrued_interest: НКД на одну бумагу в валюте ``currency`` на дату данных,
+      входит в CFV (цена с НКД); 0, если купон только что выплачен; None, если нет данных;
     * duration_mod, convexity: как отдал источник; None, если источник не дал
     """
 
@@ -130,7 +131,8 @@ class Dv01Input:
 
     quantity: int  # количество бумаг, != 0; < 0 означает шорт
     nominal: Decimal
-    price_pct: Decimal  # % от номинала
+    price_pct: Decimal  # чистая котировка, % от номинала
+    accrued_interest: Decimal  # НКД на одну бумагу, в валюте номинала
     fx_rate: Decimal  # к рублю; для RUB = 1
     duration_mod: Decimal | None
     convexity: Decimal | None
@@ -142,7 +144,8 @@ class Dv01Input:
 class Dv01Result:
     """Выход risk_core. Всё в рублях, без округления"""
 
-    current_fair_value: Decimal  # quantity * nominal * price_pct / 100 * fx_rate
+    # quantity * (nominal * price_pct / 100 + accrued_interest) * fx_rate
+    current_fair_value: Decimal
     duration_used: Decimal  # floating: 1 / coupon_frequency
     convexity_used: Decimal  # floating: 0
     dv01: Decimal  # CFV * (-D * 1bp + 1/2 * C * 1bp^2)

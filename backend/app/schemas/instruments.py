@@ -14,7 +14,10 @@ class InstrumentOut(BaseModel):
     instrument_type: str
     currency: str = Field(description="Валюта номинала, ISO 4217")
     nominal: DecimalStr | None = Field(None, description="Номинал одной бумаги")
-    price_pct: DecimalStr | None = Field(None, description="Котировка, % от номинала")
+    price_pct: DecimalStr | None = Field(None, description="Чистая котировка, % от номинала")
+    accrued_interest: DecimalStr | None = Field(
+        None, description="НКД на одну бумагу в валюте номинала"
+    )
     coupon_type: CouponType | None = None
     coupon_frequency: int | None = Field(None, description="Купонных выплат в год")
     data_as_of: date | None = Field(None, description="Дата рыночных данных")
@@ -30,6 +33,7 @@ class InstrumentOut(BaseModel):
                     "currency": "RUB",
                     "nominal": "1000",
                     "price_pct": "95",
+                    "accrued_interest": "12.5",
                     "coupon_type": "fixed",
                     "coupon_frequency": 2,
                     "data_as_of": "2026-10-12",

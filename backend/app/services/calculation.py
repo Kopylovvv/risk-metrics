@@ -37,7 +37,8 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 MEASURE_CODE = "DV01"
-METHODOLOGY_VERSION = "dv01-v1"
+# v2: CFV считается по цене с НКД (в v1 НКД не входил)
+METHODOLOGY_VERSION = "dv01-v2"
 BASE_CURRENCY = "RUB"
 
 
@@ -336,7 +337,7 @@ def _result_row(
     snap = m.snapshot
     row.market_data_snapshot_id = snap.id
     row.snapshot = snap
-    if snap.nominal is None or snap.price_pct is None:
+    if snap.nominal is None or snap.price_pct is None or snap.accrued_interest is None:
         return failed(RowErrorCode.MISSING_MARKET_DATA)
     if m.instrument is not None and snap.currency != m.instrument.currency:
         return failed(RowErrorCode.INCOMPATIBLE_MARKET_DATA)
@@ -351,12 +352,14 @@ def _result_row(
         row.fx_rate_id = fx.rate.id
 
     row.nominal_used, row.price_pct_used, row.fx_rate_used = snap.nominal, snap.price_pct, rate
+    row.accrued_interest_used = snap.accrued_interest
     try:
         result = calc(
             contracts.Dv01Input(
                 quantity=trade.quantity,
                 nominal=snap.nominal,
                 price_pct=snap.price_pct,
+                accrued_interest=snap.accrued_interest,
                 fx_rate=rate,
                 duration_mod=snap.duration_mod,
                 convexity=snap.convexity,

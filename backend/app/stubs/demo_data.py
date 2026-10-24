@@ -17,7 +17,7 @@ from app.db import FxRate, Instrument, MarketDataSnapshot
 from app.db.session import SessionFactory, engine
 from app.enums import CouponType, Provider
 
-# ISIN, название, валюта, номинал, цена %, дюрация, выпуклость, тип купона, выплат в год
+# ISIN, название, валюта, номинал, цена %, НКД, дюрация, выпуклость, тип купона, выплат в год
 BONDS = [
     (
         "RU000A1038V6",
@@ -25,18 +25,31 @@ BONDS = [
         "RUB",
         D(1000),
         D(95),
+        D("12.5"),
         D(3),
         D(12),
         CouponType.FIXED,
         2,
     ),
-    ("RU000A105A95", "ДЕМО флоатер", "RUB", D(1000), D(100), None, None, CouponType.FLOATING, 4),
+    (
+        "RU000A105A95",
+        "ДЕМО флоатер",
+        "RUB",
+        D(1000),
+        D(100),
+        D(5),
+        None,
+        None,
+        CouponType.FLOATING,
+        4,
+    ),
     (
         "XS0191754729",
         "ДЕМО еврооблигация (USD)",
         "USD",
         D(1000),
         D("98.5"),
+        D("10.25"),
         D("4.2"),
         D(25),
         CouponType.FIXED,
@@ -48,6 +61,7 @@ BONDS = [
         "RUB",
         D(1000),
         D("101.2"),
+        D("3.1"),
         None,
         None,
         CouponType.FIXED,
@@ -60,7 +74,7 @@ FX = {"USD": D("92.5")}
 async def seed(on: date) -> None:
     now = datetime.now(UTC)
     async with SessionFactory() as db:
-        for isin, name, currency, nominal, price, dur, conv, coupon, freq in BONDS:
+        for isin, name, currency, nominal, price, accrued, dur, conv, coupon, freq in BONDS:
             await db.execute(
                 pg_insert(Instrument)
                 .values(
@@ -80,6 +94,7 @@ async def seed(on: date) -> None:
                     currency=currency,
                     nominal=nominal,
                     price_pct=price,
+                    accrued_interest=accrued,
                     duration_mod=dur,
                     convexity=conv,
                     coupon_type=coupon,
