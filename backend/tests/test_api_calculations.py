@@ -16,7 +16,7 @@ from app.stubs.risk_core import calc_dv01
 from tests.test_api_trades import add, open_workspace, second_client, trades_url
 
 DAY = date(2026, 10, 20)
-FIXED = "RU000A1038V6"  # фикс. купон: D = 3, C = 12, цена 95%
+FIXED = "RU000A1038V6"  # фикс. купон: D = 3, C = 12, цена 95%, НКД 12.5
 FLOATER = "RU000A105A95"  # плавающий купон, 4 выплаты в год
 USD_BOND = "XS0191754729"  # номинал в долларах
 NEW_BOND = "RU000A0JX0J2"  # нет в БД, есть только у источника
@@ -47,6 +47,7 @@ def insert_snapshot(engine: Engine, instrument_id: uuid.UUID, **values) -> None:
         currency="RUB",
         nominal=1000,
         price_pct=95,
+        accrued_interest="12.5",
         duration_mod=3,
         convexity=12,
         coupon_type="fixed",
@@ -77,6 +78,7 @@ def market_in_db(engine: Engine):
         engine,
         insert_instrument(engine, FLOATER),
         price_pct=100,
+        accrued_interest=5,
         duration_mod=None,
         convexity=None,
         coupon_type="floating",
@@ -87,6 +89,7 @@ def market_in_db(engine: Engine):
         insert_instrument(engine, USD_BOND, "USD"),
         currency="USD",
         price_pct="98.5",
+        accrued_interest="10.25",
         duration_mod="4.2",
         convexity=25,
     )
@@ -128,7 +131,7 @@ class FakeMarket:
             currency="RUB",
             nominal=Decimal(1000),
             price_pct=Decimal("101.2"),
-            accrued_interest=None,
+            accrued_interest=Decimal("3.1"),
             duration_mod=Decimal(2),
             convexity=Decimal(5),
             coupon_type=CouponType.FIXED,
@@ -188,21 +191,23 @@ async def test_control_request_from_trades_to_saved_result(api, market_in_db, so
     assert r.status_code == 201, r.text
     calc = r.json()
     assert calc["status"] == "success"
-    assert calc["measure_code"] == "DV01" and calc["methodology_version"] == "dv01-v1"
+    assert calc["measure_code"] == "DV01" and calc["methodology_version"] == "dv01-v2"
     assert calc["workspace_revision"] == rev and calc["valuation_date"] == "2026-10-20"
     assert [row["isin"] for row in calc["results"]] == [FIXED, FLOATER, USD_BOND]  # порядок сделок
 
     rows = by_isin(calc)
-    # 100 × 1000 × 0.95 = 95 000 ₽; DV01 = 95 000 × (−3·1bp + ½·12·1bp²) = −28.4943
-    assert Decimal(rows[FIXED]["current_fair_value"]) == Decimal("95000")
-    assert Decimal(rows[FIXED]["metric_value"]) == Decimal("-28.4943")
-    # плавающий купон: D = 1/4, C = 0
+    # цена с НКД: 100 × (1000 × 0.95 + 12.5) = 96 250 ₽
+    # DV01 = 96 250 × (−3·1bp + ½·12·1bp²) = −28.869225
+    assert Decimal(rows[FIXED]["accrued_interest_used"]) == Decimal("12.5")
+    assert Decimal(rows[FIXED]["current_fair_value"]) == Decimal("96250")
+    assert Decimal(rows[FIXED]["metric_value"]) == Decimal("-28.869225")
+    # плавающий купон: D = 1/4, C = 0; 299 × (1000 + 5) = 300 495 ₽
     assert Decimal(rows[FLOATER]["duration_used"]) == Decimal("0.25")
     assert Decimal(rows[FLOATER]["convexity_used"]) == 0
-    assert Decimal(rows[FLOATER]["metric_value"]) == Decimal("-7.475")
-    # шорт в долларах: −10 × 1000 × 0.985 × 92.5 = −911 125 ₽, DV01 положительный
+    assert Decimal(rows[FLOATER]["metric_value"]) == Decimal("-7.512375")
+    # шорт в долларах, НКД тоже в долларах: −10 × (985 + 10.25) × 92.5 = −920 606.25 ₽
     assert Decimal(rows[USD_BOND]["fx_rate_used"]) == Decimal("92.5")
-    assert Decimal(rows[USD_BOND]["current_fair_value"]) == Decimal("-911125")
+    assert Decimal(rows[USD_BOND]["current_fair_value"]) == Decimal("-920606.25")
     assert Decimal(rows[USD_BOND]["metric_value"]) > 0
     expected_total = sum(Decimal(row["metric_value"]) for row in calc["results"])
     assert Decimal(calc["total_value"]) == expected_total
@@ -360,6 +365,7 @@ async def test_snapshot_after_valuation_date_is_ignored(api, sources, engine):
     [
         ({"duration_mod": None}, "MISSING_MARKET_DATA"),  # фикс. купон без дюрации
         ({"price_pct": None}, "MISSING_MARKET_DATA"),
+        ({"accrued_interest": None}, "MISSING_MARKET_DATA"),  # 0 вместо НКД не подставляем
         ({"currency": "EUR"}, "INCOMPATIBLE_MARKET_DATA"),  # в справочнике RUB
     ],
 )
@@ -368,6 +374,14 @@ async def test_row_errors_from_market_data(api, sources, engine, snapshot, code)
     ws_id, h, rev = await workspace_with(api, (FIXED, 100))
     row = (await calculate(api, ws_id, h, rev)).json()["results"][0]
     assert (row["status"], row["error_code"], row["metric_value"]) == ("failed", code, None)
+
+
+async def test_zero_accrued_interest_is_valid(api, sources, engine):
+    """НКД = 0 (день выплаты купона) это данные, а не их отсутствие"""
+    insert_snapshot(engine, insert_instrument(engine, FIXED), accrued_interest=0)
+    ws_id, h, rev = await workspace_with(api, (FIXED, 100))
+    row = (await calculate(api, ws_id, h, rev)).json()["results"][0]
+    assert row["status"] == "success" and Decimal(row["current_fair_value"]) == Decimal("95000")
 
 
 async def test_missing_fx_rate(api, sources, engine):
@@ -488,8 +502,8 @@ def test_default_sources_are_unavailable_stubs():
 
 RESULT_COLUMNS = (
     "id, trade_id, market_data_snapshot_id, fx_rate_id, input_isin, input_quantity,"
-    " nominal_used, price_pct_used, fx_rate_used, current_fair_value, duration_used,"
-    " convexity_used, metric_value, status, error_code"
+    " nominal_used, price_pct_used, accrued_interest_used, fx_rate_used, current_fair_value,"
+    " duration_used, convexity_used, metric_value, status, error_code"
 )
 
 
@@ -571,6 +585,7 @@ async def test_stored_result_can_be_recomputed(api, market_in_db, sources, engin
                 quantity=int(row.input_quantity),
                 nominal=row.nominal_used,
                 price_pct=row.price_pct_used,
+                accrued_interest=row.accrued_interest_used,
                 fx_rate=row.fx_rate_used,
                 duration_mod=row.duration_mod,
                 convexity=row.convexity,

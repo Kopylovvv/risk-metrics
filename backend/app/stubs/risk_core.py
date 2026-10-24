@@ -25,8 +25,9 @@ def calc_dv01(data: Dv01Input) -> Dv01Result:
             )
         duration, convexity = data.duration_mod, data.convexity
 
-    # CFV = количество × номинал × котировка/100 × курс; НКД не входит
-    cfv = Decimal(data.quantity) * data.nominal * data.price_pct / Decimal(100) * data.fx_rate
+    # CFV = количество × (номинал × котировка/100 + НКД) × курс: цена одной бумаги с НКД
+    dirty_price = data.nominal * data.price_pct / Decimal(100) + data.accrued_interest
+    cfv = Decimal(data.quantity) * dirty_price * data.fx_rate
     dv01 = cfv * (-duration * BASIS_POINT + Decimal("0.5") * convexity * BASIS_POINT**2)
     return Dv01Result(
         current_fair_value=cfv, duration_used=duration, convexity_used=convexity, dv01=dv01
