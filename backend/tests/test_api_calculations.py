@@ -12,7 +12,7 @@ from app import contracts
 from app.api.deps import get_fx_rates, get_market_data, get_risk_calculator
 from app.contracts import Dv01Input
 from app.enums import CouponType, Provider, RowErrorCode
-from app.stubs.risk_core import calc_dv01
+from app.risk_core import calc_dv01
 from tests.test_api_trades import add, open_workspace, second_client, trades_url
 
 DAY = date(2026, 10, 20)
@@ -151,7 +151,7 @@ class FakeFx:
 
 @pytest.fixture
 def sources():
-    """Подменяет источники и ядро в приложении; ядро остаётся той же временной функцией"""
+    """Подменяет источники и ядро в приложении; ядро настоящее (app/risk_core)"""
     from app.main import app
 
     market, fx = FakeMarket(), FakeFx()

@@ -13,8 +13,8 @@ from app import contracts, errors
 from app.config import allowed_origins
 from app.db import CalculationRun, Workspace
 from app.db.session import get_session
+from app.risk_core import calc_dv01
 from app.services.workspaces import hash_session_key
-from app.stubs.risk_core import calc_dv01
 from app.stubs.sources import NoFxRateSource, NoMarketDataSource
 
 SESSION_COOKIE = "rm_session"
@@ -87,7 +87,7 @@ async def own_calculation(
 
 
 # Точки подключения источников данных и расчётного ядра
-# Сейчас временные реализации из app/stubs; адаптеры и risk_core подключаются здесь
+# Ядро: app/risk_core; источники пока временные из app/stubs, адаптеры подключаются здесь
 def get_market_data() -> contracts.MarketDataProvider:
     return NoMarketDataSource()
 
