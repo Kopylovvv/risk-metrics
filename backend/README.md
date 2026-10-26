@@ -1,8 +1,9 @@
 # Backend: модуль расчёта DV01
 
 Готово: схема БД с миграциями, API набора сделок (создание, чтение, изменение, удаление),
-карточка инструмента, расчёт DV01 с сохранением результата. Источники Cbonds/RuData и
-модуль risk_core пока заменены временными реализациями из `app/stubs`
+карточка инструмента, расчёт DV01 с сохранением результата, расчётное ядро `app/risk_core`.
+Адаптер Cbonds `app/market_data` подключается при доступе (см. «Источник Cbonds»); RuData и
+курсы валют пока заменены временными реализациями из `app/stubs`
 
 ## Структура
 
@@ -18,7 +19,9 @@ app/
                    в deps.py сессия, CSRF и точки подключения источников и ядра
   services/        наборы и сделки (workspaces.py), путь расчёта (calculation.py),
                    чтение справочника, снимков и курсов (market.py)
-  stubs/           временно: источники без данных, формула DV01, демо-данные
+  risk_core/       расчётное ядро: формула DV01 одной сделки, без сети и БД
+  market_data/     источники: адаптер Cbonds и скрипт проверки реального запроса
+  stubs/           временно: источники без данных, демо-данные
   db/              модели SQLAlchemy (схема v4) и подключение
 migrations/        Alembic: 0001 схема v4, 0002 короткие имена внешних ключей, 0003 НКД в результате
 tests/             тесты на настоящем PostgreSQL: схема, ограничения, API
@@ -44,6 +47,9 @@ alembic upgrade head
 python -m app.stubs.demo_data      # демо-облигации и курс USD на сегодня (по желанию)
 uvicorn app.main:app --reload
 ```
+
+На Windows запускать с `--reload`: без него uvicorn берёт ProactorEventLoop, с которым
+psycopg в async-режиме не работает, и `/health/ready` отвечает `database: unavailable`
 
 Контракт и проверка запросов: http://localhost:8000/docs
 
@@ -114,13 +120,16 @@ DV01 = CFV × (−D·1bp + ½·C·1bp²); плавающий купон: D = 1/�
 `partial` (часть строк с ошибкой), `failed` (ни одной); при ошибках `total_value = null`
 
 Ошибки строк: `INSTRUMENT_NOT_FOUND`, `PROVIDER_UNAVAILABLE`, `MISSING_MARKET_DATA`
-(нет цены, номинала, дюрации или выпуклости), `INCOMPATIBLE_MARKET_DATA` (валюта снимка
-не совпадает со справочником), `MISSING_FX_RATE`
+(нет цены, номинала, дюрации или выпуклости, у плавающего купона нет частоты),
+`INCOMPATIBLE_MARKET_DATA` (валюта снимка не совпадает со справочником; номинал, котировка
+или курс ≤ 0, НКД < 0, частота купона ≤ 0, дюрация < 0), `MISSING_FX_RATE`
 
 Источники и ядро подключаются в `app/api/deps.py` (`get_market_data`, `get_fx_rates`,
-`get_risk_calculator`) по протоколам из `contracts.py`. Сейчас там временные реализации:
-источники отвечают `PROVIDER_UNAVAILABLE`, поэтому живой API считает по данным из БД
-(например, после `python -m app.stubs.demo_data`)
+`get_risk_calculator`) по протоколам из `contracts.py`. Ядро настоящее (`app/risk_core`,
+правила и пример вызова в docstring `dv01.py`). Cbonds подключается, если в `.env` заданы
+`CBONDS_LOGIN`/`CBONDS_PASSWORD`; без них и для курсов валют источники временные: отвечают
+`PROVIDER_UNAVAILABLE`, поэтому живой API считает по данным из БД (например, после
+`python -m app.stubs.demo_data`)
 
 ### Для фронта (Егор)
 
@@ -137,7 +146,7 @@ DV01 = CFV × (−D·1bp + ½·C·1bp²); плавающий купон: D = 1/�
 |---|---|---|
 | `DATABASE_URL` | не задан | полный адрес БД; если задан, главнее остальных |
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | из `.env` | как в `compose.yaml` |
-| `POSTGRES_HOST`, `POSTGRES_PORT` | `localhost`, `5433` | внутри сети compose: `db`, `5432` |
+| `POSTGRES_HOST`, `POSTGRES_PORT` | `127.0.0.1`, `5433` | внутри сети compose: `db`, `5432` |
 | `ALLOWED_ORIGINS` | `localhost`/`127.0.0.1` на портах 5173 и 8000 | откуда можно слать изменения |
 | `COOKIE_SECURE` | `false` | `true` на сервере с HTTPS |
 
@@ -197,7 +206,7 @@ PostgreSQL 18.6 из `compose.yaml`, миграции на пустой базе
 ## Показ: backend по шагам
 
 1. При ручном запуске Python в корне: `docker compose up -d --wait db`; в `backend`: `alembic upgrade head`,
-   `python -m app.stubs.demo_data`, `uvicorn app.main:app` (или Docker-образ, см. выше)
+   `python -m app.stubs.demo_data`, `uvicorn app.main:app --reload` (или Docker-образ, см. выше)
 2. http://localhost:8000/docs:
    - `POST /api/v1/workspaces` → `id` и `csrf_token` (вставить токен в заголовок `X-CSRF-Token`)
    - `POST .../trades` по одной: `RU000A1038V6` 100, `RU000A105A95` 299, `XS0191754729` -10,
