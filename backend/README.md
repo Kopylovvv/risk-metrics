@@ -229,3 +229,28 @@ PostgreSQL 18.6 из `compose.yaml`, миграции на пустой базе
   - `calculation_results`: `success` → есть CFV и `metric_value`, нет `error_code`;
     `failed` → есть `error_code`, `metric_value IS NULL` (не 0)
 - Деньги и коэффициенты хранятся в `NUMERIC` без ограничения точности, количество в `numeric(20,0)`
+
+## Источник Cbonds (`app/market_data`)
+
+Адаптер `CbondsMarketData` реализует `MarketDataProvider`: методы web-сервиса
+`get_emissions` (валюта, номинал, плавающая ставка, выплат в год), `get_tradings_new`
+(индикативная цена, НКД, модифицированная дюрация, выпуклость) и `get_aci` (НКД, если в
+итогах торгов его нет). Правила нормализации и
+коды ошибок описаны в docstring `app/market_data/cbonds.py`
+
+Подключается, если в `.env` заданы `CBONDS_LOGIN` и `CBONDS_PASSWORD` (`CBONDS_URL` по
+умолчанию `https://ws2.cbonds.info/services/json/`); без них остаётся заглушка. Публичный
+демо-доступ указан на https://cbonds.ru/api/catalog/
+
+Проверка реального запроса (логин и пароль не печатаются):
+
+```bash
+python -m app.market_data.check --list                     # какие бумаги видит логин
+python -m app.market_data.check US900123AT75 2026-10-23    # снимок по бумаге на дату
+```
+
+Тесты `tests/test_market_data_cbonds.py` работают без сети на подставных ответах,
+собранных по спецификации Cbonds (`openapi.yaml`); формат полей сверен с реальным ответом
+демо-доступа (`--list`). Открытые вопросы: единицы выпуклости в документации не указаны,
+по реальным значениям годы² (подтвердить у эксперта); выбор торговой площадки, когда их
+несколько (сейчас самая свежая дата с индикативной ценой); RuData: доступа нет

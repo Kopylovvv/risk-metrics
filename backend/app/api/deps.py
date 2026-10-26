@@ -10,9 +10,10 @@ from fastapi import Cookie, Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import contracts, errors
-from app.config import allowed_origins
+from app.config import allowed_origins, cbonds_credentials
 from app.db import CalculationRun, Workspace
 from app.db.session import get_session
+from app.market_data import CbondsMarketData
 from app.services.workspaces import hash_session_key
 from app.stubs.risk_core import calc_dv01
 from app.stubs.sources import NoFxRateSource, NoMarketDataSource
@@ -89,7 +90,10 @@ async def own_calculation(
 # Точки подключения источников данных и расчётного ядра
 # Сейчас временные реализации из app/stubs; адаптеры и risk_core подключаются здесь
 def get_market_data() -> contracts.MarketDataProvider:
-    return NoMarketDataSource()
+    credentials = cbonds_credentials()
+    if credentials is None:  # нет доступа к Cbonds: расчёт берёт данные только из БД
+        return NoMarketDataSource()
+    return CbondsMarketData(*credentials)
 
 
 def get_fx_rates() -> contracts.FxRateProvider:

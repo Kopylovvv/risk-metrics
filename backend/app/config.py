@@ -48,6 +48,18 @@ def allowed_origins() -> list[str]:
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
+CBONDS_DEFAULT_URL = "https://ws2.cbonds.info/services/json/"
+
+
+def cbonds_credentials() -> tuple[str, str, str] | None:
+    """Логин, пароль и адрес web-сервиса Cbonds; None, если доступа нет (тогда заглушка)"""
+    load_env_file()
+    login, password = os.getenv("CBONDS_LOGIN", ""), os.getenv("CBONDS_PASSWORD", "")
+    if not login or not password:
+        return None
+    return login, password, os.getenv("CBONDS_URL") or CBONDS_DEFAULT_URL
+
+
 def cookie_secure() -> bool:
     """Secure-cookie только по HTTPS: на сервере COOKIE_SECURE=true, локально false"""
     load_env_file()
