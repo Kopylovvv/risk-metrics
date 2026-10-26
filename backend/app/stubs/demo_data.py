@@ -121,4 +121,6 @@ async def seed(on: date) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(seed(date.fromisoformat(sys.argv[1]) if len(sys.argv) > 1 else date.today()))
+    on = date.fromisoformat(sys.argv[1]) if len(sys.argv) > 1 else date.today()
+    # SelectorEventLoop: на Windows по умолчанию Proactor, с ним psycopg async не работает
+    asyncio.run(seed(on), loop_factory=asyncio.SelectorEventLoop)
