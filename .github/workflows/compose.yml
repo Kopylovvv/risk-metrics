@@ -5,12 +5,16 @@ on:
     branches: ["**"]
     paths:
       - "backend/**"
+      - "frontend/**"
+      - ".env.example"
       - "compose.yaml"
       - "scripts/check_compose.py"
       - ".github/workflows/compose.yml"
   pull_request:
     paths:
       - "backend/**"
+      - "frontend/**"
+      - ".env.example"
       - "compose.yaml"
       - "scripts/check_compose.py"
       - ".github/workflows/compose.yml"
