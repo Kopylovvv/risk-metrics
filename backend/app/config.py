@@ -30,7 +30,8 @@ def database_url() -> URL:
         drivername="postgresql+psycopg",
         username=os.getenv("POSTGRES_USER", "risk_metrics"),
         password=os.getenv("POSTGRES_PASSWORD"),
-        host=os.getenv("POSTGRES_HOST", "localhost"),
+        # не localhost: на Windows он сначала идёт в IPv6, а compose слушает только IPv4
+        host=os.getenv("POSTGRES_HOST", "127.0.0.1"),
         port=int(os.getenv("POSTGRES_PORT", "5433")),  # порт, проброшенный в compose.yaml
         database=os.getenv("POSTGRES_DB", "risk_metrics"),
     )
