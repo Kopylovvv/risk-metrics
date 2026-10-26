@@ -10,6 +10,9 @@ x-backend: &backend
     POSTGRES_PORT: "5432"
     ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000}
     COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    CBONDS_LOGIN: ${CBONDS_LOGIN:-}
+    CBONDS_PASSWORD: ${CBONDS_PASSWORD:-}
+    CBONDS_URL: ${CBONDS_URL:-}
 
 services:
   db:

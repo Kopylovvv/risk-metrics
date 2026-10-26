@@ -489,10 +489,12 @@ async def test_access_to_calculations(api, market_in_db, sources):
     assert r.json()["code"] == "CALCULATION_NOT_FOUND"
 
 
-def test_default_sources_are_unavailable_stubs():
-    """Пока адаптеры не подключены, живой API берёт данные только из БД"""
+def test_default_sources_are_unavailable_stubs(monkeypatch):
+    """Без доступа к Cbonds живой API берёт данные только из БД"""
     from app.stubs.sources import NoMarketDataSource
 
+    # пустое значение: .env разработчика с логином Cbonds его не перезапишет
+    monkeypatch.setenv("CBONDS_LOGIN", "")
     assert isinstance(get_market_data(), NoMarketDataSource)
     assert get_risk_calculator() is calc_dv01
 
