@@ -26,7 +26,7 @@ ISO-кодом, dur_mod 1.9–9.4, convexity 5.5–116 (порядка D², то
 * MISSING_MARKET_DATA: нет итогов торгов с ценой на дату оценки или раньше
 * INCOMPATIBLE_MARKET_DATA: чужой ISIN, дата позже запрошенной, валюта не ISO-код,
   номинал или цена ≤ 0, не число
-* PROVIDER_UNAVAILABLE: таймаут, сеть, HTTP-ошибка (в том числе 401/403 — нет доступа),
+* PROVIDER_UNAVAILABLE: таймаут, сеть, HTTP-ошибка (в том числе 401/403: нет доступа),
   ответ не того формата. Логин и пароль в сообщения и логи не попадают
 """
 
@@ -64,6 +64,9 @@ class CbondsMarketData:
         self._auth = {"login": login, "password": password}
         self._base_url = base_url.rstrip("/") + "/"
         self._transport = transport
+        # параметры выпуска нужны и get_instrument, и get_snapshot: один запрос на ISIN
+        # объект живёт один HTTP-запрос к backend (создаётся в deps.py), данные не устаревают
+        self._emissions: dict[str, dict[str, Any]] = {}
 
     async def get_instrument(self, isin: str) -> InstrumentInfo:
         emission = await self._emission(isin)
@@ -111,11 +114,14 @@ class CbondsMarketData:
         )
 
     async def _emission(self, isin: str) -> dict[str, Any]:
+        if isin in self._emissions:
+            return self._emissions[isin]
         rows = await self._post("get_emissions", filters=[_eq("isin_code", isin)], limit=2)
         if not rows:
             raise MarketDataError(RowErrorCode.INSTRUMENT_NOT_FOUND, f"Cbonds не знает {isin}")
         if rows[0].get("isin_code") != isin:
             _incompatible(f"Cbonds вернул другой ISIN вместо {isin}")
+        self._emissions[isin] = rows[0]
         return rows[0]
 
     async def _accrued_interest(self, isin: str, on: date) -> Decimal | None:
