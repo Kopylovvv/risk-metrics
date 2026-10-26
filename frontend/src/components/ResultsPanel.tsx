@@ -13,11 +13,12 @@ export default function ResultsPanel({
   isStale,
   timestamp,
 }: ResultsPanelProps) {
-  const cfvTotal = result
-    ? result.results
-        .filter((r) => r.status === 'success' && r.currentFairValue)
-        .reduce((sum, r) => sum + Number(r.currentFairValue), 0)
-    : 0;
+  const successRows = result
+    ? result.results.filter((r) => r.status === 'success' && r.currentFairValue)
+    : [];
+
+  const cfvTotal = successRows.reduce((sum, r) => sum + Number(r.currentFairValue), 0);
+  const hasSuccessRows = successRows.length > 0;
 
   const totalDv01 = result?.totalValue ? Number(result.totalValue) : null;
 
@@ -167,6 +168,7 @@ export default function ResultsPanel({
                       <tr className="border-b border-[#162033] text-slate-400">
                         <th className="text-left px-3 py-2 font-medium">ISIN</th>
                         <th className="text-right px-3 py-2 font-medium">Кол-во</th>
+                        <th className="text-right px-3 py-2 font-medium">НКД</th>
                         <th className="text-right px-3 py-2 font-medium">CFV ({result.currency})</th>
                         <th className="text-right px-3 py-2 font-medium">DV01 ({result.currency})</th>
                         <th className="text-center px-3 py-2 font-medium">Статус</th>
@@ -187,6 +189,11 @@ export default function ResultsPanel({
                             {row.quantity.toLocaleString('ru-RU')}
                           </td>
                           <td className="px-3 py-2 text-right font-mono text-slate-200">
+                            {row.accruedInterestUsed
+                              ? Number(row.accruedInterestUsed).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              : <span className="text-slate-500">—</span>}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-slate-200">
                             {row.currentFairValue
                               ? Number(row.currentFairValue).toLocaleString('ru-RU', { maximumFractionDigits: 2 })
                               : <span className="text-slate-500">—</span>}
@@ -200,15 +207,15 @@ export default function ResultsPanel({
                           </td>
                           <td className="px-3 py-2 text-center">
                             {row.status === 'success' ? (
-                              <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-medium bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                                ✓ Ок
+                              <span className="inline-flex items-center text-[11px] text-emerald-400 font-medium bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                                Ок
                               </span>
                             ) : (
                               <span
-                                className="inline-flex items-center gap-1 text-[11px] text-red-400 font-medium bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20"
+                                className="inline-flex items-center text-[11px] text-red-400 font-medium bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20"
                                 title={row.errorCode ?? 'Ошибка данных'}
                               >
-                                ✗ {row.errorCode ? 'Нет данных' : 'Ошибка'}
+                                {row.errorCode ? 'Нет данных' : 'Ошибка'}
                               </span>
                             )}
                           </td>
@@ -219,7 +226,7 @@ export default function ResultsPanel({
                 </div>
               )}
 
-              {cfvTotal > 0 && (
+              {hasSuccessRows && (
                 <div className="mt-4 rounded-lg border border-[#162033] bg-[#070b13] p-4">
                   <span className="block text-[12px] text-slate-400 mb-1.5">
                     Справедливая стоимость позиции (CurrentFairValue)
@@ -239,7 +246,7 @@ export default function ResultsPanel({
       </div>
 
       <p className="text-[11px] font-mono text-slate-500 tracking-tight px-1">
-        Методология: CurrentFairValue × (-DurationMod × 1bp + 1/2 × Convexity × 1bp²)
+        Методология: CFV = Кол-во × (Номинал × Цена/100 + НКД) × Курс; DV01 = CFV × (−D × 1bp + ½ × C × 1bp²)
       </p>
     </div>
   );

@@ -5,6 +5,7 @@ export interface Instrument {
   currency: string;
   nominal: string | null;
   pricePct: string | null;
+  accruedInterest: string | null;
   couponType: 'fixed' | 'floating' | 'zero' | null;
   couponFrequency: number | null;
   dataAsOf: string | null;
@@ -43,6 +44,7 @@ export interface CalculationRow {
   dataAsOf: string | null;
   nominalUsed: string | null;
   pricePctUsed: string | null;
+  accruedInterestUsed: string | null;
   fxRateUsed: string | null;
   currentFairValue: string | null;
   durationUsed: string | null;

@@ -83,9 +83,18 @@ export default function InstrumentInfo({ instrument }: InstrumentInfoProps) {
         </div>
 
         <div>
-          <span className="block text-[11px] text-slate-400 mb-1">Котировка (% от номинала)</span>
+          <span className="block text-[11px] text-slate-400 mb-1">Чистая цена (% от номинала)</span>
           <span className="font-mono text-[14px] font-medium text-white tracking-wide">
             {instrument.pricePct ? `${instrument.pricePct}%` : '—'}
+          </span>
+        </div>
+
+        <div>
+          <span className="block text-[11px] text-slate-400 mb-1">НКД (на 1 бумагу)</span>
+          <span className="font-mono text-[14px] font-medium text-white tracking-wide">
+            {instrument.accruedInterest
+              ? `${Number(instrument.accruedInterest).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${instrument.currency}`
+              : '—'}
           </span>
         </div>
 

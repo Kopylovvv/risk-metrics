@@ -16,6 +16,7 @@ export const mockInstruments: Instrument[] = [
     currency: 'RUB',
     nominal: '1000',
     pricePct: '95.0',
+    accruedInterest: '12.5',
     couponType: 'fixed',
     couponFrequency: 2,
     dataAsOf: '2026-10-20',
@@ -28,6 +29,7 @@ export const mockInstruments: Instrument[] = [
     currency: 'RUB',
     nominal: '1000',
     pricePct: '100.0',
+    accruedInterest: '5',
     couponType: 'floating',
     couponFrequency: 4,
     dataAsOf: '2026-10-20',
@@ -40,6 +42,7 @@ export const mockInstruments: Instrument[] = [
     currency: 'USD',
     nominal: '1000',
     pricePct: '98.5',
+    accruedInterest: '10.25',
     couponType: 'fixed',
     couponFrequency: 2,
     dataAsOf: '2026-10-20',
@@ -47,11 +50,12 @@ export const mockInstruments: Instrument[] = [
   },
   {
     isin: 'RU000A0JX0J2',
-    name: 'ДЕМО выпуск без дюрации',
+    name: 'ДЕМО выпуск без НКД',
     instrumentType: 'bond',
     currency: 'RUB',
     nominal: '1000',
     pricePct: '101.2',
+    accruedInterest: null,
     couponType: 'fixed',
     couponFrequency: 2,
     dataAsOf: '2026-10-20',
@@ -282,17 +286,18 @@ export async function mockRunCalculation(
 
   for (const t of mockTrades) {
     const inst = findMockInstrument(t.isin);
-    if (!inst || !inst.nominal || !inst.pricePct) {
+    if (!inst || !inst.nominal || !inst.pricePct || inst.accruedInterest === null || inst.accruedInterest === undefined) {
       rows.push({
         tradeId: t.id,
         isin: t.isin,
         quantity: t.quantity,
         status: 'failed',
-        errorCode: 'MARKET_DATA_MISSING',
-        provider: null,
-        dataAsOf: null,
+        errorCode: 'MISSING_MARKET_DATA',
+        provider: inst?.provider ?? null,
+        dataAsOf: inst?.dataAsOf ?? null,
         nominalUsed: null,
         pricePctUsed: null,
+        accruedInterestUsed: null,
         fxRateUsed: null,
         currentFairValue: null,
         durationUsed: null,
@@ -305,8 +310,9 @@ export async function mockRunCalculation(
 
     const nom = parseFloat(inst.nominal);
     const price = parseFloat(inst.pricePct);
+    const accrued = parseFloat(inst.accruedInterest);
     const fx = inst.currency === 'USD' ? 92.5 : 1.0;
-    const cfv = t.quantity * nom * (price / 100) * fx;
+    const cfv = t.quantity * (nom * (price / 100) + accrued) * fx;
 
     let d = 3.0;
     let c = 12.0;
@@ -328,6 +334,7 @@ export async function mockRunCalculation(
       dataAsOf: inst.dataAsOf,
       nominalUsed: inst.nominal,
       pricePctUsed: inst.pricePct,
+      accruedInterestUsed: accrued.toFixed(2),
       fxRateUsed: fx.toFixed(4),
       currentFairValue: cfv.toFixed(2),
       durationUsed: d.toFixed(4),
@@ -344,7 +351,7 @@ export async function mockRunCalculation(
     workspaceId: mockWorkspaceId,
     workspaceRevision: mockRevision,
     measureCode: 'DV01',
-    methodologyVersion: 'v1.0',
+    methodologyVersion: 'dv01-v2',
     valuationDate: new Date().toISOString().slice(0, 10),
     status: hasFailed ? (rows.some((r) => r.status === 'success') ? 'partial' : 'failed') : 'success',
     totalValue: totalMetric.toFixed(4),
