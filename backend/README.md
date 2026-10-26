@@ -45,6 +45,9 @@ python -m app.stubs.demo_data      # демо-облигации и курс USD
 uvicorn app.main:app --reload
 ```
 
+На Windows запускать с `--reload`: без него uvicorn берёт ProactorEventLoop, с которым
+psycopg в async-режиме не работает, и `/health/ready` отвечает `database: unavailable`
+
 Контракт и проверка запросов: http://localhost:8000/docs
 
 ## API
@@ -137,7 +140,7 @@ DV01 = CFV × (−D·1bp + ½·C·1bp²); плавающий купон: D = 1/�
 |---|---|---|
 | `DATABASE_URL` | не задан | полный адрес БД; если задан, главнее остальных |
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | из `.env` | как в `compose.yaml` |
-| `POSTGRES_HOST`, `POSTGRES_PORT` | `localhost`, `5433` | внутри сети compose: `db`, `5432` |
+| `POSTGRES_HOST`, `POSTGRES_PORT` | `127.0.0.1`, `5433` | внутри сети compose: `db`, `5432` |
 | `ALLOWED_ORIGINS` | `localhost`/`127.0.0.1` на портах 5173 и 8000 | откуда можно слать изменения |
 | `COOKIE_SECURE` | `false` | `true` на сервере с HTTPS |
 
@@ -197,7 +200,7 @@ PostgreSQL 18.6 из `compose.yaml`, миграции на пустой базе
 ## Показ: backend по шагам
 
 1. При ручном запуске Python в корне: `docker compose up -d --wait db`; в `backend`: `alembic upgrade head`,
-   `python -m app.stubs.demo_data`, `uvicorn app.main:app` (или Docker-образ, см. выше)
+   `python -m app.stubs.demo_data`, `uvicorn app.main:app --reload` (или Docker-образ, см. выше)
 2. http://localhost:8000/docs:
    - `POST /api/v1/workspaces` → `id` и `csrf_token` (вставить токен в заголовок `X-CSRF-Token`)
    - `POST .../trades` по одной: `RU000A1038V6` 100, `RU000A105A95` 299, `XS0191754729` -10,
