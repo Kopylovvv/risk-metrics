@@ -1,6 +1,8 @@
 """Тесты на настоящем PostgreSQL: отдельная база <имя>_test, схема ставится миграциями"""
 
+import asyncio
 import os
+import sys
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
@@ -17,6 +19,10 @@ from sqlalchemy.pool import NullPool
 from app.config import database_url
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+# Windows: psycopg в async-режиме не работает с ProactorEventLoop (стандартным для Windows)
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 def alembic_config(connection) -> Config:
