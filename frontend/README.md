@@ -1,32 +1,39 @@
-# React + TypeScript + Vite
+# Frontend risk-metrics
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React + TypeScript + Vite. Интерфейс работает с backend API или с контрольными ответами.
 
-Currently, two official plugins are available:
+## Локальный запуск
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Требуются Node.js и npm. Сборка проверена на Node.js 26.8.2.
 
-## React Compiler
+Из папки frontend:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm ci
+cp .env.example .env
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Шаблон .env включает `VITE_USE_MOCKS=true`: контрольные данные и расчёт выполняются в браузере, обращения к настоящему backend не выполняются.
+
+Для работы с API установите в .env:
+
+```dotenv
+VITE_API_BASE_URL=http://localhost:8000/api
+VITE_USE_MOCKS=false
+```
+
+Backend должен быть запущен, например через Compose из корня репозитория.
+Откройте frontend по http://localhost:5173. Для cookie используйте одинаковое имя хоста у frontend и backend: localhost с localhost либо 127.0.0.1 с 127.0.0.1. После изменения .env перезапустите Vite. Адрес frontend должен быть разрешён в backend ALLOWED_ORIGINS.
+
+Для тестовой VM предварительно откройте SSH-туннель к API по инструкции задачи #19. Открытие API на localhost через туннель не разворачивает frontend на сервере: контейнеризация и общий запуск относятся к #17.
+
+## Проверки
+
+```bash
+npm run lint
+npm run build
+```
+
+`build` выполняет проверку типов и создаёт статику в dist/.
+Сценарий src/tests/verify_task3.ts проверяет валидацию и контрольные ответы. Браузерную проверку с настоящим backend фиксируйте отдельно; контрольные данные не подтверждают доступность внешних источников или финансовую корректность методики.

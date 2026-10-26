@@ -354,7 +354,7 @@ export async function mockRunCalculation(
     methodologyVersion: 'dv01-v2',
     valuationDate: new Date().toISOString().slice(0, 10),
     status: hasFailed ? (rows.some((r) => r.status === 'success') ? 'partial' : 'failed') : 'success',
-    totalValue: totalMetric.toFixed(4),
+    totalValue: hasFailed ? null : totalMetric.toFixed(4),
     currency: 'RUB',
     results: rows,
     createdAt: new Date().toISOString(),
