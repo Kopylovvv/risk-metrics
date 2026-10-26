@@ -4,7 +4,7 @@
   python -m app.market_data.check RU000A1038V6 [2026-10-24]   снимок по бумаге на дату
   python -m app.market_data.check --list                      какие бумаги видит логин
 
-Логин и пароль берутся из CBONDS_LOGIN / CBONDS_PASSWORD (.env в корне) и не печатаются.
+Логин и пароль берутся из CBONDS_LOGIN / CBONDS_PASSWORD (.env в корне) и не печатаются
 Код выхода 0: данные получены; 1: ошибка источника; 2: доступ не настроен
 """
 

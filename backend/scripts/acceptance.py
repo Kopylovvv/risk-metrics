@@ -1,6 +1,6 @@
 """Контрольная приёмка второго показа (#32): полный цикл через HTTP API запущенного backend
 
-Сценарий из README «Показ: backend по шагам», каждое число сверяется с ручным расчётом.
+Сценарий из README «Показ: backend по шагам», каждое число сверяется с ручным расчётом
 
 Подготовка (из папки backend): alembic upgrade head; python -m app.stubs.demo_data;
 uvicorn app.main:app --reload (на Windows с --reload) или docker compose up

@@ -126,6 +126,15 @@ async def test_request_format():
     assert tradings["sorting"] == [{"field": "date", "order": "desc"}]
 
 
+async def test_emission_is_requested_once_per_isin():
+    """Расчёт новой бумаги вызывает get_instrument и get_snapshot: выпуск запрашивается один раз"""
+    fake = FakeCbonds()
+    source = fake.source()
+    await source.get_instrument(ISIN)
+    await source.get_snapshot(ISIN, DAY)
+    assert [m for m, _ in fake.requests] == ["get_emissions", "get_tradings_new"]
+
+
 async def test_floating_coupon():
     emission = dict(EMISSION, floating_rate=1, cupon_period=4)
     trading = dict(TRADING, dur_mod=None, convexity=None)

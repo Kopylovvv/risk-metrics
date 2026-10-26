@@ -58,7 +58,7 @@ ACI = {EUROBOND: "12.75"}  # НКД на мин. лот
 
 
 class CbondsServer:
-    """Ответы web-сервиса Cbonds по ISIN из фильтра; down=True — сервис отвечает 500"""
+    """Ответы web-сервиса Cbonds по ISIN из фильтра; down=True: сервис отвечает 500"""
 
     def __init__(self):
         self.down = False
@@ -117,7 +117,7 @@ async def test_control_set_from_cbonds_to_saved_result(api, cbonds):
     assert Decimal(rows[FIXED]["metric_value"]) == Decimal("-20.29946225")
     assert rows[FIXED]["provider"] == "cbonds" and rows[FIXED]["data_as_of"] == str(DAY)
 
-    # FLOATER: D = 1/4, C = 0 (у источника дюрации нет — и не нужна)
+    # FLOATER: D = 1/4, C = 0 (у источника дюрации нет, она и не нужна)
     # CFV = 50 × (998 + 7.4) = 50 270; DV01 = 50 270 × −0.000025 = −1.25675
     assert Decimal(rows[FLOATER]["duration_used"]) == Decimal("0.25")
     assert Decimal(rows[FLOATER]["metric_value"]) == Decimal("-1.25675")
