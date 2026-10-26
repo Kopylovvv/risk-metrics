@@ -132,7 +132,7 @@ class MarketDataSnapshot(Base):
     # параметры могут прийти неполными: NULL, а при расчёте строка получит ошибку
     nominal: Mapped[Decimal | None] = mapped_column(Numeric)  # номинал одной бумаги
     price_pct: Mapped[Decimal | None] = mapped_column(Numeric)  # % от номинала
-    accrued_interest: Mapped[Decimal | None] = mapped_column(Numeric)  # НКД, в CFV не входит
+    accrued_interest: Mapped[Decimal | None] = mapped_column(Numeric)  # НКД на бумагу, входит в CFV
     duration_mod: Mapped[Decimal | None] = mapped_column(Numeric)  # модифицированная дюрация
     convexity: Mapped[Decimal | None] = mapped_column(Numeric)  # выпуклость
     coupon_type: Mapped[CouponType] = mapped_column(
@@ -220,6 +220,8 @@ class CalculationResult(Base):
     # параметры, фактически подставленные в формулу
     nominal_used: Mapped[Decimal | None] = mapped_column(Numeric)
     price_pct_used: Mapped[Decimal | None] = mapped_column(Numeric)
+    # NULL в расчётах dv01-v1: тогда НКД в CFV не входил
+    accrued_interest_used: Mapped[Decimal | None] = mapped_column(Numeric)
     fx_rate_used: Mapped[Decimal | None] = mapped_column(Numeric)
     current_fair_value: Mapped[Decimal | None] = mapped_column(Numeric)  # CFV, RUB
     duration_used: Mapped[Decimal | None] = mapped_column(Numeric)  # floating: 1 / частота
