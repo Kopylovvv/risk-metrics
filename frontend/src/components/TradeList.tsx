@@ -88,7 +88,7 @@ export default function TradeList({
                   type="number"
                   min={1}
                   step={1}
-                  value={trade.positionSize}
+                  value={trade.quantity}
                   onChange={(e) => {
                     const val = Number(e.target.value);
                     if (val > 0) onUpdate(trade.id, val);

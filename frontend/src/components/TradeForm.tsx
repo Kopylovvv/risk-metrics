@@ -63,7 +63,14 @@ export default function TradeForm({ onAdd, onInstrumentLoaded }: TradeFormProps)
     }
 
     onAdd(
-      { id: generateId(), isin: instrument.isin, positionSize: size },
+      {
+        id: generateId(),
+        isin: instrument.isin,
+        quantity: size,
+        instrument,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
       instrument,
     );
 
