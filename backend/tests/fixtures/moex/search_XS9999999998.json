@@ -1,0 +1,14 @@
+{
+ "securities": {
+  "columns": [
+   "secid",
+   "isin",
+   "shortname",
+   "name",
+   "group",
+   "primary_boardid",
+   "is_traded"
+  ],
+  "data": []
+ }
+}

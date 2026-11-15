@@ -1,4 +1,4 @@
-"""Настройки из окружения: адрес PostgreSQL, разрешённые Origin, cookie сессии"""
+"""Настройки из окружения: адрес PostgreSQL, разрешённые Origin, cookie сессии, источники"""
 
 import os
 from pathlib import Path
@@ -52,6 +52,15 @@ def allowed_origins() -> list[str]:
 def log_level() -> str:
     load_env_file()
     return os.getenv("LOG_LEVEL", "INFO").upper()
+
+
+def external_sources_enabled() -> bool:
+    """Ходить ли за данными в Мосбиржу и ЦБ. По умолчанию да
+
+    EXTERNAL_SOURCES=off: расчёт берёт данные только из БД (тесты, работа без сети)
+    """
+    load_env_file()
+    return os.getenv("EXTERNAL_SOURCES", "on").strip().lower() not in ("off", "0", "false")
 
 
 CBONDS_DEFAULT_URL = "https://ws2.cbonds.info/services/json/"

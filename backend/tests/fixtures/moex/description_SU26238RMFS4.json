@@ -1,0 +1,58 @@
+{
+ "description": {
+  "columns": [
+   "name",
+   "value"
+  ],
+  "data": [
+   [
+    "SECID",
+    "SU26238RMFS4"
+   ],
+   [
+    "NAME",
+    "ОФЗ-ПД 26238 15/05/2041"
+   ],
+   [
+    "SHORTNAME",
+    "ОФЗ 26238"
+   ],
+   [
+    "ISIN",
+    "RU000A1038V6"
+   ],
+   [
+    "MATDATE",
+    "2041-05-15"
+   ],
+   [
+    "FACEUNIT",
+    "SUR"
+   ],
+   [
+    "FACEVALUE",
+    "1000"
+   ],
+   [
+    "COUPONFREQUENCY",
+    "2"
+   ],
+   [
+    "BOND_TYPE",
+    "Облигация с фиксированным (известным) купоном"
+   ],
+   [
+    "COUPON_DETAILS",
+    "Фиксированный с известными купонами"
+   ],
+   [
+    "GROUP",
+    "stock_bonds"
+   ],
+   [
+    "TYPE",
+    "ofz_bond"
+   ]
+  ]
+ }
+}

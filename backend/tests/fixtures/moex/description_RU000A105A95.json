@@ -1,0 +1,58 @@
+{
+ "description": {
+  "columns": [
+   "name",
+   "value"
+  ],
+  "data": [
+   [
+    "SECID",
+    "RU000A105A95"
+   ],
+   [
+    "NAME",
+    "Газпром капитал ООО ЗО34-1-Д"
+   ],
+   [
+    "SHORTNAME",
+    "ГазКЗ-34Д"
+   ],
+   [
+    "ISIN",
+    "RU000A105A95"
+   ],
+   [
+    "MATDATE",
+    "2034-04-28"
+   ],
+   [
+    "FACEUNIT",
+    "USD"
+   ],
+   [
+    "FACEVALUE",
+    "1000"
+   ],
+   [
+    "COUPONFREQUENCY",
+    "2"
+   ],
+   [
+    "BOND_TYPE",
+    "Валютная облигация"
+   ],
+   [
+    "COUPON_DETAILS",
+    "Фиксированный с известными купонами"
+   ],
+   [
+    "GROUP",
+    "stock_bonds"
+   ],
+   [
+    "TYPE",
+    "corporate_bond"
+   ]
+  ]
+ }
+}

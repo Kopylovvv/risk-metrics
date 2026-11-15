@@ -295,8 +295,21 @@ async def test_new_quote_and_rate_do_not_change_saved_calculation(api, engine, m
         assert list(sources) == ["moex", "test"]  # снимки разных источников хранятся рядом
 
 
-def test_default_sources_are_moex_and_cbr_placeholders():
-    """Адаптеры Мосбиржи и ЦБ подключаются в deps.py; пока там заглушки, а не Cbonds"""
+def test_default_sources_are_moex_and_cbr(monkeypatch):
+    """В deps.py подключены адаптеры Мосбиржи и ЦБ (не Cbonds); каждый запрос: новый объект"""
+    from app.market_data import CbrFxRates, MoexMarketData
+
+    monkeypatch.setenv("EXTERNAL_SOURCES", "on")
+    market, fx = get_market_data(), get_fx_rates()
+    assert isinstance(market, MoexMarketData) and market.provider == Provider.MOEX
+    assert isinstance(fx, CbrFxRates) and fx.source == "cbr"
+    assert get_market_data() is not market
+
+
+@pytest.mark.parametrize("value", ["off", "OFF", "0", "false"])
+def test_external_sources_can_be_switched_off(monkeypatch, value):
+    """Без сети и в тестах: заглушки, расчёт берёт данные только из БД"""
+    monkeypatch.setenv("EXTERNAL_SOURCES", value)
     market, fx = get_market_data(), get_fx_rates()
     assert isinstance(market, NoMarketDataSource) and market.provider is None
     assert isinstance(fx, NoFxRateSource) and fx.source is None
