@@ -13,7 +13,8 @@
 app/
   main.py          приложение FastAPI, CORS, подключение роутеров
   config.py        настройки из окружения / .env в корне репозитория
-  errors.py        единый формат ошибок {code, message, details}
+  errors.py        единый формат ошибок {code, message, details, request_id}
+  observability.py request_id, JSON-логи событий, метрики Prometheus (/metrics)
   enums.py         общие перечисления: источник, тип купона, статусы, коды ошибок строк
   contracts.py     общий интерфейс backend ↔ market_data / risk_core
   schemas/         Pydantic-модели запросов и ответов API
@@ -68,6 +69,7 @@ psycopg в async-режиме не работает, и `/health/ready` отве
 | DELETE | `/api/v1/workspaces/{id}/trades/{trade_id}?expected_revision=N` | удалить сделку |
 | POST | `/api/v1/workspaces/{id}/calculations` | расчёт DV01 `{expected_revision, valuation_date?}` (дата не позже сегодня), результат сохраняется |
 | GET | `/api/v1/calculations/{id}` | сохранённый расчёт с входами на его момент |
+| GET | `/metrics` | метрики Prometheus, только внутри сети (см. `docs/monitoring.md`) |
 | GET | `/api/v1/calculations/{id}/source-diff?as_of=` | сохранённые снимок и курс рядом с новым ответом источника |
 | GET | `/api/v1/instruments/{isin}` | карточка облигации из БД |
 | GET | `/health/live`, `/health/ready` | процесс жив / база доступна |
@@ -189,6 +191,8 @@ CFV = количество × (номинал × цена/100 + НКД) × ку�
 - в строке результата есть происхождение данных: `provider`, `data_as_of`, `currency`,
   `settlement_currency`, `fx_source`, `fx_rate_date`; новый код ошибки `FX_PROVIDER_UNAVAILABLE`
   (источник курсов не ответил), `MISSING_FX_RATE` теперь значит «курса этой валюты нет»
+- у ошибок есть `request_id` (он же в заголовке `X-Request-ID`): его можно показать
+  пользователю вместе с сообщением, по нему ищется запрос в логах
 - `GET /api/v1/calculations/{id}/source-diff`: сохранённые данные расчёта рядом с новым
   ответом источника, список `changed` можно подсветить
 
@@ -201,6 +205,18 @@ CFV = количество × (номинал × цена/100 + НКД) × ку�
 | `POSTGRES_HOST`, `POSTGRES_PORT` | `127.0.0.1`, `5433` | внутри сети compose: `db`, `5432` |
 | `ALLOWED_ORIGINS` | `localhost`/`127.0.0.1` на портах 5173 и 8000 | откуда можно слать изменения |
 | `COOKIE_SECURE` | `false` | `true` на сервере с HTTPS |
+| `LOG_LEVEL` | `INFO` | уровень логов (`DEBUG`, `WARNING`...) |
+
+## Диагностика и метрики
+
+Подробно, с перечнем метрик и запросами для дашборда: [`docs/monitoring.md`](../docs/monitoring.md)
+
+* Логи: stdout, JSON по строке на событие (`http.request`, `calc.stage`, `source.request`,
+  `calc.finished`). Все события одного запроса связаны `request_id`; он же в заголовке
+  ответа `X-Request-ID` и в поле `request_id` тела ошибки
+* Метрики: `GET /metrics`, только агрегаты: HTTP-запросы и расчёты (количество, статусы,
+  длительность), этапы расчёта, запросы к источникам. Метки ограничены шаблоном маршрута,
+  методом, кодом и статусами; ISIN, id набора и сделки, cookie и токенов в них нет
 
 Полезные команды Alembic: `alembic current`, `alembic downgrade base`,
 `alembic upgrade head --sql` (SQL без подключения), `alembic check` (модели = миграции)

@@ -13,7 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import contracts
 from app.db import CalculationResult, CalculationRun, Instrument
 from app.schemas.source_diff import FxData, SnapshotData, SourceDiffOut, SourceDiffRow
-from app.services.calculation import BASE_CURRENCY, _ask, _check, _fx_error, get_calculation
+from app.services.calculation import (
+    BASE_CURRENCY,
+    _ask,
+    _fx_error,
+    fx_source_name,
+    get_calculation,
+    market_source,
+)
 from app.services.market import latest_rates, latest_snapshots
 
 # время получения отличается всегда, сравнивать его бессмысленно
@@ -42,8 +49,13 @@ async def compare_with_source(
     snapshot_errors: dict[str, contracts.RowErrorCode] = {}
     for isin in saved:
         try:
-            snap = await _ask(market.get_snapshot(isin, as_of))
-            _check(snap.isin == isin and snap.data_as_of <= as_of)
+            snap = await _ask(
+                market.get_snapshot(isin, as_of),
+                source=market_source(market),
+                operation="snapshot",
+                valid=lambda snap, isin=isin: snap.isin == isin and snap.data_as_of <= as_of,
+                isin=isin,
+            )
             snapshots[isin] = SnapshotData.model_validate(snap, from_attributes=True)
         except contracts.MarketDataError as exc:
             snapshot_errors[isin] = exc.code
@@ -57,8 +69,15 @@ async def compare_with_source(
     rate_errors: dict[str, contracts.RowErrorCode] = {}
     for currency in currencies:
         try:
-            rate = await _ask(fx.get_rate_to_rub(currency, as_of))
-            _check(rate.currency == currency and rate.rate_date <= as_of and rate.rate_to_rub > 0)
+            rate = await _ask(
+                fx.get_rate_to_rub(currency, as_of),
+                source=fx_source_name(fx),
+                operation="fx_rate",
+                valid=lambda rate, currency=currency: (
+                    rate.currency == currency and rate.rate_date <= as_of and rate.rate_to_rub > 0
+                ),
+                currency=currency,
+            )
             rates[currency] = FxData.model_validate(rate, from_attributes=True)
         except contracts.MarketDataError as exc:
             rate_errors[currency] = _fx_error(exc.code)

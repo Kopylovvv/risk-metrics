@@ -49,6 +49,11 @@ def allowed_origins() -> list[str]:
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
+def log_level() -> str:
+    load_env_file()
+    return os.getenv("LOG_LEVEL", "INFO").upper()
+
+
 CBONDS_DEFAULT_URL = "https://ws2.cbonds.info/services/json/"
 
 

@@ -7,8 +7,9 @@
 """
 
 import logging
+import time
 import uuid
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -30,6 +31,7 @@ from app.db import (
     Workspace,
 )
 from app.enums import RowErrorCode, RowStatus, RunStatus
+from app.observability import calculation_stage, error_type, observe_calculation, observe_source
 from app.services.market import latest_rates, latest_snapshots
 from app.services.workspaces import RevisionConflict
 
@@ -44,6 +46,10 @@ BASE_CURRENCY = "RUB"
 
 class WorkspaceEmpty(Exception):
     """В наборе нет сделок"""
+
+
+# отказ до записи результата: в метрике расчётов свой статус, а не error
+_REJECTED = {RevisionConflict: "conflict", WorkspaceEmpty: "empty"}
 
 
 @dataclass
@@ -96,10 +102,28 @@ async def run_calculation(
     fx: contracts.FxRateProvider,
     calc: contracts.RiskCalculator,
 ) -> uuid.UUID:
-    """Считает DV01 по набору и сохраняет результат; возвращает id запуска"""
-    prepared = await _read_inputs(db, workspace, expected_revision, valuation_date)
-    await _fetch_missing(prepared, valuation_date, market, fx)
-    return await _save(db, workspace, expected_revision, valuation_date, prepared, calc)
+    """Считает DV01 по набору и сохраняет результат; возвращает id запуска
+
+    Каждый этап пишет событие calc.stage, итог пишет calc.finished и метрики расчёта
+    """
+    started = time.perf_counter()
+    try:
+        with calculation_stage("read"):
+            prepared = await _read_inputs(db, workspace, expected_revision, valuation_date)
+        with calculation_stage("sources"):
+            await _fetch_missing(prepared, valuation_date, market, fx)
+        with calculation_stage("write"):
+            run_id, status, rows = await _save(
+                db, workspace, expected_revision, valuation_date, prepared, calc
+            )
+    except Exception as exc:
+        outcome = _REJECTED.get(type(exc), "error")
+        observe_calculation(outcome, time.perf_counter() - started, [], error_type=error_type(exc))
+        raise
+    observe_calculation(
+        status.value, time.perf_counter() - started, rows, calculation_id=str(run_id)
+    )
+    return run_id
 
 
 # --- шаг 1: чтение -------------------------------------------------------------
@@ -149,9 +173,13 @@ async def _fetch_missing(
     for isin, m in prepared.markets.items():
         if m.instrument is None:
             try:
-                info = await _ask(market.get_instrument(isin))
-                _check(info.isin == isin)
-                m.new_instrument = info
+                m.new_instrument = await _ask(
+                    market.get_instrument(isin),
+                    source=market_source(market),
+                    operation="instrument",
+                    valid=lambda info, isin=isin: info.isin == isin,
+                    isin=isin,
+                )
             except contracts.MarketDataError as exc:
                 m.error = exc.code
                 continue
@@ -165,9 +193,15 @@ async def _fetch_missing(
         ):
             continue
         try:
-            snapshot = await _ask(market.get_snapshot(isin, valuation_date))
-            _check(snapshot.isin == isin and snapshot.data_as_of <= valuation_date)
-            m.new_snapshot = snapshot
+            m.new_snapshot = await _ask(
+                market.get_snapshot(isin, valuation_date),
+                source=market_source(market),
+                operation="snapshot",
+                valid=lambda snap, isin=isin: (
+                    snap.isin == isin and snap.data_as_of <= valuation_date
+                ),
+                isin=isin,
+            )
         except contracts.MarketDataError as exc:
             # источник не ответил: берём последний сохранённый снимок (его дата есть в ответе)
             if m.snapshot is None:
@@ -185,28 +219,70 @@ async def _fetch_missing(
         ):
             continue
         try:
-            rate = await _ask(fx.get_rate_to_rub(currency, valuation_date))
-            _check(
-                rate.currency == currency
-                and rate.rate_date <= valuation_date
-                and rate.rate_to_rub > 0
+            known.new_rate = await _ask(
+                fx.get_rate_to_rub(currency, valuation_date),
+                source=fx_source_name(fx),
+                operation="fx_rate",
+                valid=lambda rate, currency=currency: (
+                    rate.currency == currency
+                    and rate.rate_date <= valuation_date
+                    and rate.rate_to_rub > 0
+                ),
+                currency=currency,
             )
-            known.new_rate = rate
         except contracts.MarketDataError as exc:
             # источник курсов не ответил: берём последний сохранённый курс (его дата в ответе)
             if known.rate is None:
                 known.error = _fx_error(exc.code)
 
 
-async def _ask(call: Awaitable[T]) -> T:
-    """Запрос к источнику: любой сбой адаптера становится ошибкой строки, а не ответом 500"""
+def market_source(market: contracts.MarketDataProvider) -> str:
+    """Имя источника для диагностики: moex, test; none у временной заглушки"""
+    provider = getattr(market, "provider", None)
+    return provider.value if provider is not None else "none"
+
+
+def fx_source_name(fx: contracts.FxRateProvider) -> str:
+    return getattr(fx, "source", None) or "none"
+
+
+async def _ask(
+    call: Awaitable[T],
+    *,
+    source: str,
+    operation: str,
+    valid: Callable[[T], bool] = lambda _: True,
+    **fields: object,
+) -> T:
+    """Запрос к источнику: любой сбой адаптера становится ошибкой строки, а не ответом 500
+
+    Длительность и исход (ok или код ошибки) уходят в событие source.request и метрики
+    """
+    unavailable = (
+        RowErrorCode.FX_PROVIDER_UNAVAILABLE
+        if operation == "fx_rate"
+        else RowErrorCode.PROVIDER_UNAVAILABLE
+    )
+    started = time.perf_counter()
     try:
-        return await call
-    except contracts.MarketDataError:
+        result = await call
+        _check(valid(result))
+    except contracts.MarketDataError as exc:
+        observe_source(source, operation, exc.code.value, time.perf_counter() - started, **fields)
         raise
     except Exception as exc:
-        logger.exception("Сбой источника данных")
-        raise contracts.MarketDataError(RowErrorCode.PROVIDER_UNAVAILABLE) from exc
+        observe_source(
+            source,
+            operation,
+            unavailable.value,
+            time.perf_counter() - started,
+            error_type=error_type(exc),
+            **fields,
+        )
+        logger.warning("source.crash", exc_info=exc, extra={"source": source})
+        raise contracts.MarketDataError(unavailable) from exc
+    observe_source(source, operation, "ok", time.perf_counter() - started, **fields)
+    return result
 
 
 def _fx_error(code: RowErrorCode) -> RowErrorCode:
@@ -232,7 +308,7 @@ async def _save(
     valuation_date: date,
     prepared: _Prepared,
     calc: contracts.RiskCalculator,
-) -> uuid.UUID:
+) -> tuple[uuid.UUID, RunStatus, list[tuple[str, str]]]:
     # пока шли внешние запросы, набор могли изменить: тогда результат уже не про него
     revision = await db.scalar(
         select(Workspace.revision).where(Workspace.id == workspace.id).with_for_update()
@@ -263,9 +339,10 @@ async def _save(
         completed_at=func.now(),
         results=results,
     )
+    rows = [(r.status.value, r.error_code or "none") for r in results]
     db.add(run)
     await db.commit()
-    return run.id
+    return run.id, status, rows
 
 
 async def _save_instruments(
