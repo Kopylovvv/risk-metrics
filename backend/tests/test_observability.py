@@ -274,3 +274,30 @@ async def test_service_routes_are_named_and_unknown_paths_are_not(api):
         await api.get("/docs/RU000A1038V6")  # неизвестный путь: в метку не попадает
     assert d.changes == [1]
     assert "RU000A1038V6" not in (await api.get("/metrics")).text
+
+
+@pytest.mark.parametrize("mode", ["down", "generic"])
+async def test_fx_unavailability_has_one_code_in_row_and_metric(api, engine, moex_cbr, mode):  # noqa: F811
+    """Адаптер курсов мог ответить общим PROVIDER_UNAVAILABLE: в строке и метрике всё равно FX_"""
+    from app import contracts
+    from app.enums import RowErrorCode
+
+    _, fx = moex_cbr
+    if mode == "generic":
+
+        async def generic(currency, on):
+            raise contracts.MarketDataError(RowErrorCode.PROVIDER_UNAVAILABLE)
+
+        fx.get_rate_to_rub = generic
+    else:
+        fx.mode = "down"
+    sample = (
+        "risk_source_requests_total",
+        dict(source="cbr", operation="fx_rate", outcome="FX_PROVIDER_UNAVAILABLE"),
+    )
+    insert_snapshot(engine, insert_instrument(engine, USD_BOND, "USD"), currency="USD")
+    ws_id, h, rev = await workspace_with(api, (USD_BOND, 1))
+    with Delta(sample) as d:
+        row = (await calculate(api, ws_id, h, rev)).json()["results"][0]
+    assert row["error_code"] == "FX_PROVIDER_UNAVAILABLE"
+    assert d.changes == [1]

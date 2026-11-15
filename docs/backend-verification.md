@@ -9,11 +9,11 @@
 | | |
 |---|---|
 | Ветка | `feature/moex-cbr-integration` от `main` `fe80ff5` |
-| Коммиты | `59c6315` (S3-09), `58f67cc` (S3-10), `ca2fa3d` (S3-11) и коммит с этой записью |
+| Коммиты | `59c6315` (S3-09), `58f67cc` (S3-10), `ca2fa3d` (S3-11), `13ad06a` (S3-12, S2-19, S2-20) и правки по ревью |
 | Схема БД | Alembic `0005` |
 | Методика | `dv01-v2` |
 | Окружение | Python 3.13, PostgreSQL 16 (в CI 18.6), без Docker (реестр образов недоступен) |
-| Тесты | `pytest`: 192 passed; `ruff check`, `ruff format --check`, `alembic check` чисто |
+| Тесты | backend `pytest`: 194 passed; `ruff check`, `ruff format --check`, `alembic check`, `downgrade base` и `upgrade head` чисто; frontend `npm run lint`, `npm test`, `npm run build` |
 
 ## S3-12 (#64): интеграция, изоляция сессий, история
 

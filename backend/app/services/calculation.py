@@ -268,7 +268,13 @@ async def _ask(
         result = await call
         _check(valid(result))
     except contracts.MarketDataError as exc:
-        observe_source(source, operation, exc.code.value, time.perf_counter() - started, **fields)
+        # недоступность курсов и рыночных данных различаем по операции, а не по коду адаптера
+        code = exc.code
+        if code in (RowErrorCode.PROVIDER_UNAVAILABLE, RowErrorCode.FX_PROVIDER_UNAVAILABLE):
+            code = unavailable
+        observe_source(source, operation, code.value, time.perf_counter() - started, **fields)
+        if code != exc.code:
+            raise contracts.MarketDataError(code, str(exc)) from exc
         raise
     except Exception as exc:
         observe_source(

@@ -123,7 +123,7 @@ class JsonFormatter(logging.Formatter):
             data["stage"] = stage_var.get()
         for key, value in vars(record).items():
             if key not in _STANDARD and key not in data:
-                data[key] = value
+                data[key] = redact(value) if isinstance(value, str) else value
         if record.exc_info:
             data["exception"] = redact(self.formatException(record.exc_info))
         return json.dumps(data, ensure_ascii=False, default=str)
