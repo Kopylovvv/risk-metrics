@@ -3,6 +3,7 @@ export interface Instrument {
   name: string | null;
   instrumentType: string;
   currency: string;
+  settlementCurrency: string | null;
   nominal: string | null;
   pricePct: string | null;
   accruedInterest: string | null;
@@ -42,6 +43,10 @@ export interface CalculationRow {
   errorCode: string | null;
   provider: string | null;
   dataAsOf: string | null;
+  currency: string | null;
+  settlementCurrency: string | null;
+  fxSource: string | null;
+  fxRateDate: string | null;
   nominalUsed: string | null;
   pricePctUsed: string | null;
   accruedInterestUsed: string | null;
@@ -77,4 +82,5 @@ export interface ApiError {
   code: string;
   message: string;
   details: ApiErrorDetail[];
+  requestId: string | null;
 }

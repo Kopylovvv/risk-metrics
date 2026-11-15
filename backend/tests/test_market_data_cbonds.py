@@ -295,9 +295,10 @@ async def test_provider_unavailable(fake):
 # --- подключение -----------------------------------------------------------------------------
 
 
-def test_adapter_is_used_when_credentials_are_set(monkeypatch):
+def test_cbonds_is_not_used_even_with_credentials(monkeypatch):
+    """Cbonds убран из рабочего сценария (решение от 14.11.2026): логин в .env не влияет"""
     from app.api.deps import get_market_data
 
     monkeypatch.setenv("CBONDS_LOGIN", "user")
     monkeypatch.setenv("CBONDS_PASSWORD", "secret-password")
-    assert isinstance(get_market_data(), CbondsMarketData)
+    assert not isinstance(get_market_data(), CbondsMarketData)

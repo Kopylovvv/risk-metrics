@@ -1,4 +1,15 @@
-import type { CalculationResult } from '@/types/api';
+import type { CalculationResult, CalculationRow } from '@/types/api';
+import { rowErrorText } from '@/utils/helpers';
+
+// Откуда данные строки: источник и дата котировки, для валютной бумаги ещё курс
+function rowSource(row: CalculationRow): string | null {
+  if (!row.provider && !row.dataAsOf) return null;
+  const quote = [row.provider, row.dataAsOf && `от ${row.dataAsOf}`].filter(Boolean).join(' ');
+  if (!row.fxSource || !row.fxRateUsed) return quote;
+  const rate = Number(row.fxRateUsed).toLocaleString('ru-RU', { maximumFractionDigits: 6 });
+  const fxDate = row.fxRateDate ? ` от ${row.fxRateDate}` : '';
+  return `${quote}; курс ${row.currency} ${rate} (${row.fxSource}${fxDate})`;
+}
 
 interface ResultsPanelProps {
   result: CalculationResult | null;
@@ -18,7 +29,8 @@ export default function ResultsPanel({
     : [];
 
   const cfvTotal = successRows.reduce((sum, r) => sum + Number(r.currentFairValue), 0);
-  const hasSuccessRows = successRows.length > 0;
+  // сумма CFV показывается только у полного расчёта: при partial это была бы сумма части сделок
+  const showCfvTotal = result?.status === 'success' && successRows.length > 0;
 
   const totalDv01 = result?.totalValue ? Number(result.totalValue) : null;
 
@@ -95,7 +107,7 @@ export default function ResultsPanel({
                 </span>
                 {failedCount > 0 && (
                   <span className="text-[11px] text-slate-400">
-                    ({failedCount} {failedCount === 1 ? 'сделка' : failedCount < 5 ? 'сделки' : 'сделок'} без рыночных данных)
+                    ({failedCount} {failedCount === 1 ? 'сделка' : failedCount < 5 ? 'сделки' : 'сделок'} с ошибкой, см. таблицу)
                   </span>
                 )}
               </div>
@@ -129,7 +141,7 @@ export default function ResultsPanel({
                     Риск-метрика DV01
                   </p>
                   <p className="text-sm text-amber-400 font-medium">
-                    Не удалось рассчитать суммарный итог — отсутствуют рыночные данные по отдельным бумагам
+                    Итог не рассчитан: по части сделок нет результата. Причины в столбце «Статус»
                   </p>
                 </div>
               )}
@@ -179,9 +191,9 @@ export default function ResultsPanel({
                         <tr key={row.tradeId ?? idx} className="hover:bg-[#0c1220]">
                           <td className="px-3 py-2 font-mono text-slate-200">
                             <span>{row.isin}</span>
-                            {row.dataAsOf && (
+                            {rowSource(row) && (
                               <span className="block text-[10px] text-slate-500 font-mono">
-                                от {row.dataAsOf}
+                                {rowSource(row)}
                               </span>
                             )}
                           </td>
@@ -190,7 +202,7 @@ export default function ResultsPanel({
                           </td>
                           <td className="px-3 py-2 text-right font-mono text-slate-200">
                             {row.accruedInterestUsed
-                              ? Number(row.accruedInterestUsed).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              ? `${Number(row.accruedInterestUsed).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${row.currency ? ` ${row.currency}` : ''}`
                               : <span className="text-slate-500">—</span>}
                           </td>
                           <td className="px-3 py-2 text-right font-mono text-slate-200">
@@ -213,9 +225,9 @@ export default function ResultsPanel({
                             ) : (
                               <span
                                 className="inline-flex items-center text-[11px] text-red-400 font-medium bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20"
-                                title={row.errorCode ?? 'Ошибка данных'}
+                                title={`${rowErrorText(row.errorCode).hint} (${row.errorCode ?? 'нет кода'})`}
                               >
-                                {row.errorCode ? 'Нет данных' : 'Ошибка'}
+                                {rowErrorText(row.errorCode).label}
                               </span>
                             )}
                           </td>
@@ -226,7 +238,7 @@ export default function ResultsPanel({
                 </div>
               )}
 
-              {hasSuccessRows && (
+              {showCfvTotal && (
                 <div className="mt-4 rounded-lg border border-[#162033] bg-[#070b13] p-4">
                   <span className="block text-[12px] text-slate-400 mb-1.5">
                     Справедливая стоимость позиции (CurrentFairValue)

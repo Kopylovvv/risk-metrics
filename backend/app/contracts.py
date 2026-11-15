@@ -2,9 +2,9 @@
 
 Кто за что отвечает:
 
-* ``market_data`` (Андрей): адаптеры Cbonds и RuData, порядок Cbonds -> RuData,
-  нормализация ответа источника в ``MarketSnapshot`` (единицы, даты, полнота)
-  Сам в БД не пишет
+* ``market_data`` (Андрей): адаптер Мосбиржи (параметры облигаций) и курсы ЦБ РФ,
+  нормализация ответа источника в ``MarketSnapshot`` и ``FxRate`` (единицы, даты, полнота)
+  Сам в БД не пишет. Cbonds и RuData в расчёте больше не используются
 * ``risk_core`` (Андрей): чистая функция ``calc_dv01``: только арифметика на Decimal,
   без сети, БД, текущей даты и глобального состояния
 * backend (Семён): API, сессия и доступ к набору, revision, поиск снимка в БД,
@@ -22,7 +22,7 @@ from typing import Protocol
 
 # Перечисления лежат в app/enums.py; импорт отсюда тоже работает:
 # from app.contracts import Provider, CouponType, RowErrorCode
-from app.enums import CouponType, Provider, RowErrorCode
+from app.enums import CouponType, FxSource, Provider, RowErrorCode
 
 __all__ = [
     "CalculationInputError",
@@ -31,6 +31,7 @@ __all__ = [
     "Dv01Result",
     "FxRate",
     "FxRateProvider",
+    "FxSource",
     "InstrumentInfo",
     "MarketDataError",
     "MarketDataProvider",
@@ -61,11 +62,21 @@ class MarketSnapshot:
     """Рыночные параметры на дату (таблица market_data_snapshots)
 
     Нормализацию делает адаптер:
+    * currency: валюта НОМИНАЛА (у Мосбиржи FACEUNIT); курс ЦБ берётся для неё;
+    * settlement_currency: валюта расчётов по сделкам (у Мосбиржи CURRENCYID, SUR → RUB),
+      может отличаться от валюты номинала (например, номинал USD, расчёты в RUB);
+      на формулу не влияет: цена дана в % от номинала, НКД в валюте номинала,
+      поэтому CFV = количество × (номинал × цена/100 + НКД) × курс валюты номинала;
     * nominal: текущий номинал ОДНОЙ бумаги в валюте ``currency``;
-    * price_pct: чистая котировка в % от номинала (95.5, а не 0.955);
+    * price_pct: чистая котировка в % от номинала (95.5, а не 0.955). Единицы берутся
+      из описания поля источника, а не угадываются по величине; доля 0.955 → 95.5;
     * accrued_interest: НКД на одну бумагу в валюте ``currency`` на дату данных,
-      входит в CFV (цена с НКД); 0, если купон только что выплачен; None, если нет данных;
-    * duration_mod, convexity: как отдал источник; None, если источник не дал
+      входит в CFV (цена с НКД); 0, если купон только что выплачен; None, если нет данных.
+      Если источник отдал НКД в валюте расчётов, адаптер переводит его в валюту номинала
+      или бросает INCOMPATIBLE_MARKET_DATA;
+    * duration_mod, convexity: модифицированная дюрация в годах и выпуклость в годах²;
+      None, если источник не дал
+    * data_as_of: дата торгов, к которой относятся цена и НКД
     """
 
     isin: str
@@ -80,16 +91,38 @@ class MarketSnapshot:
     convexity: Decimal | None
     coupon_type: CouponType
     coupon_frequency: int | None  # выплат в год
+    settlement_currency: str | None = None  # ISO 4217; None, если источник не дал
 
 
 @dataclass(frozen=True, slots=True)
 class FxRate:
-    """Курс валюты к рублю (таблица fx_rates). Для RUB не запрашивается: курс = 1"""
+    """Курс валюты к рублю (таблица fx_rates). Для RUB не запрашивается: курс = 1
+
+    rate_to_rub: рублей за ОДНУ единицу валюты. ЦБ публикует часть курсов за 10, 100
+    или 10 000 единиц (поле Nominal): такой курс нужно разделить, удобно через ``per_unit``
+    rate_date: дата, на которую ЦБ установил курс
+    """
 
     currency: str
     rate_date: date
     rate_to_rub: Decimal
-    source: str  # например "cbr"
+    source: str  # FxSource: "cbr" или "demo"
+
+    @classmethod
+    def per_unit(
+        cls,
+        currency: str,
+        rate_date: date,
+        value: Decimal,
+        nominal: int,
+        source: str = FxSource.CBR,
+    ) -> "FxRate":
+        """Курс ЦБ «value рублей за nominal единиц» → рублей за одну единицу"""
+        if nominal <= 0 or value <= 0:
+            raise MarketDataError(
+                RowErrorCode.INCOMPATIBLE_MARKET_DATA, f"{currency}: курс {value} за {nominal}"
+            )
+        return cls(currency, rate_date, Decimal(value) / Decimal(nominal), source)
 
 
 class MarketDataError(Exception):
@@ -101,11 +134,17 @@ class MarketDataError(Exception):
 
 
 class MarketDataProvider(Protocol):
-    """Реализует Андрей. Цепочка Cbonds -> RuData тоже реализует этот протокол
+    """Реализует Андрей: адаптер Мосбиржи
 
-    Методы бросают ``MarketDataError`` с кодами INSTRUMENT_NOT_FOUND,
-    MISSING_MARKET_DATA, PROVIDER_UNAVAILABLE или INCOMPATIBLE_MARKET_DATA
+    ``provider``: какой Provider ставится в снимках; None у временной заглушки;
+    снимок этого источника за дату оценки, уже сохранённый в БД, повторно не запрашивается
+    Методы бросают ``MarketDataError`` с кодами INSTRUMENT_NOT_FOUND (выпуска нет),
+    MISSING_MARKET_DATA (нет цены или обязательного поля на дату),
+    INCOMPATIBLE_MARKET_DATA (чужой ISIN, дата позже, неизвестные единицы или валюта)
+    или PROVIDER_UNAVAILABLE (сеть, таймаут, ответ не того формата)
     """
+
+    provider: Provider | None
 
     async def get_instrument(self, isin: str) -> InstrumentInfo: ...
 
@@ -115,7 +154,13 @@ class MarketDataProvider(Protocol):
 
 
 class FxRateProvider(Protocol):
-    """Бросает ``MarketDataError(MISSING_FX_RATE)``, если курса нет"""
+    """Реализует курсы ЦБ РФ. ``source``: значение fx_rates.source, None у заглушки
+
+    Бросает ``MarketDataError`` с кодом MISSING_FX_RATE (ЦБ не устанавливал курс этой
+    валюты), FX_PROVIDER_UNAVAILABLE (источник не ответил) или INCOMPATIBLE_MARKET_DATA
+    """
+
+    source: str | None
 
     async def get_rate_to_rub(self, currency: str, on: date) -> FxRate: ...
 

@@ -15,6 +15,7 @@ import Header from '@/components/Header';
 import TradeSection from '@/components/TradeSection';
 import InstrumentInfo from '@/components/InstrumentInfo';
 import ResultsPanel from '@/components/ResultsPanel';
+import { isResultStale } from '@/utils/helpers';
 
 export default function App() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -24,7 +25,6 @@ export default function App() {
   const [selectedInstrument, setSelectedInstrument] = useState<Instrument | null>(null);
 
   const [calcResult, setCalcResult] = useState<CalculationResult | null>(null);
-  const [isStale, setIsStale] = useState(false);
   const [timestamp, setTimestamp] = useState<string | null>(null);
   const [calculating, setCalculating] = useState(false);
   const [calcError, setCalcError] = useState<string | null>(null);
@@ -34,6 +34,8 @@ export default function App() {
 
   const trades: Trade[] = workspace?.trades ?? [];
   const revision = workspace?.revision ?? 0;
+  // устаревание считается по revision: верно и после своих правок, и после 409 из-за другой вкладки
+  const isStale = isResultStale(workspace, calcResult);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,7 +51,6 @@ export default function App() {
             const calc = await getCalculation(ws.lastCalculationId);
             if (!cancelled) {
               setCalcResult(calc);
-              setIsStale(ws.revision !== calc.workspaceRevision);
               setTimestamp(
                 new Date(calc.createdAt).toLocaleTimeString('ru-RU', {
                   hour: '2-digit',
@@ -76,7 +77,6 @@ export default function App() {
 
   const applyWorkspace = useCallback((ws: Workspace) => {
     setWorkspace(ws);
-    setIsStale(true);
     setMutError(null);
   }, []);
 
@@ -168,7 +168,6 @@ export default function App() {
     try {
       const result = await runCalculation(revision);
       setCalcResult(result);
-      setIsStale(false);
 
       const now = new Date();
       setTimestamp(

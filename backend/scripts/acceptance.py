@@ -100,7 +100,7 @@ def main(base_url: str) -> int:
             and rows[NO_DURATION]["metric_value"] is None,
             f"{NO_DURATION}: {rows[NO_DURATION]['error_code']}, значение null, не 0",
         )
-        # без доступа к источнику PROVIDER_UNAVAILABLE, с доступом к Cbonds INSTRUMENT_NOT_FOUND
+        # без адаптера Мосбиржи PROVIDER_UNAVAILABLE, с адаптером INSTRUMENT_NOT_FOUND
         check(
             rows[UNKNOWN]["error_code"] in ("PROVIDER_UNAVAILABLE", "INSTRUMENT_NOT_FOUND"),
             f"{UNKNOWN}: {rows[UNKNOWN]['error_code']}",

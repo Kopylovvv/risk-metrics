@@ -42,7 +42,7 @@ floating: D = 1 / выплат в год, C = 0
 | бумаги нет у источника | ошибка строки | `INSTRUMENT_NOT_FOUND` | там же |
 | несовместимые данные | чужой ISIN, дата позже, валюта, ≤ 0, NaN | `INCOMPATIBLE_MARKET_DATA` | `test_incompatible_data` |
 | источник недоступен | 500, таймаут, 401/403 | `PROVIDER_UNAVAILABLE`, статус `failed` | `test_source_down_is_not_a_financial_error`, `test_provider_unavailable` |
-| данные уже в БД | повторный расчёт не ходит к источнику | тот же итог | `test_saved_data_is_reused_without_source` |
+| данные уже в БД | повторный расчёт за ту же дату не ходит к источнику | тот же итог | `test_moex_is_asked_when_only_test_data_of_the_day_is_saved` |
 | изменение сделки | старый расчёт не меняется | входы на момент расчёта | `test_history_keeps_own_inputs_after_trade_changes` (backend) |
 | второй источник (RuData) | — | не проверяется: доступа нет | — |
 

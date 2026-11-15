@@ -159,13 +159,15 @@ async def test_source_down_is_not_a_financial_error(api, cbonds):
     assert by_isin(calc)[FIXED]["error_code"] == "PROVIDER_UNAVAILABLE"
 
 
-async def test_saved_data_is_reused_without_source(api, cbonds):
+async def test_saved_cbonds_data_is_not_used_in_new_calculations(api, cbonds):
+    """Снимки Cbonds остаются в БД для старых расчётов, но новые расчёты их не берут"""
     ws_id, h, rev = await workspace_with(api, (FIXED, 100))
     first = (await calculate(api, ws_id, h, rev)).json()
-    calls = len(cbonds.calls)
-    cbonds.down = True  # второй расчёт на ту же дату не ходит в источник
+    assert Decimal(first["total_value"]) == Decimal("-20.29946225")
+    cbonds.down = True  # источник не ответил, а сохранённый снимок Cbonds не подходит
     second = (await calculate(api, ws_id, h, rev)).json()
-    assert len(cbonds.calls) == calls
-    assert (
-        Decimal(second["total_value"]) == Decimal(first["total_value"]) == Decimal("-20.29946225")
-    )
+    assert second["status"] == "failed"
+    assert by_isin(second)[FIXED]["error_code"] == "PROVIDER_UNAVAILABLE"
+    # первый расчёт по-прежнему читается со своим источником и числами
+    old = (await api.get(f"/api/v1/calculations/{first['id']}")).json()
+    assert old == first

@@ -13,6 +13,9 @@ class InstrumentOut(BaseModel):
     name: str | None
     instrument_type: str
     currency: str = Field(description="Валюта номинала, ISO 4217")
+    settlement_currency: str | None = Field(
+        None, description="Валюта расчётов по сделкам; может отличаться от валюты номинала"
+    )
     nominal: DecimalStr | None = Field(None, description="Номинал одной бумаги")
     price_pct: DecimalStr | None = Field(None, description="Чистая котировка, % от номинала")
     accrued_interest: DecimalStr | None = Field(
@@ -31,13 +34,14 @@ class InstrumentOut(BaseModel):
                     "name": "ДЕМО ОФЗ, фиксированный купон",
                     "instrument_type": "bond",
                     "currency": "RUB",
+                    "settlement_currency": "RUB",
                     "nominal": "1000",
                     "price_pct": "95",
                     "accrued_interest": "12.5",
                     "coupon_type": "fixed",
                     "coupon_frequency": 2,
                     "data_as_of": "2026-10-12",
-                    "provider": "cbonds",
+                    "provider": "moex",
                 }
             ]
         }
