@@ -1,4 +1,4 @@
-"""Карточка облигации по ISIN; пока только из БД, без запроса к Cbonds/RuData"""
+"""Карточка облигации по ISIN; пока только из БД, без запроса к источнику"""
 
 from fastapi import APIRouter
 from pydantic import TypeAdapter, ValidationError

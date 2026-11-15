@@ -41,7 +41,7 @@ def insert_snapshot(engine: Engine, instrument_id: uuid.UUID, **values) -> None:
     row = dict(
         id=uuid.uuid4(),
         instrument_id=instrument_id,
-        provider="cbonds",
+        provider="moex",
         data_as_of=DAY,
         retrieved_at=datetime.now(UTC),
         currency="RUB",
@@ -102,6 +102,8 @@ def market_in_db(engine: Engine):
 class FakeMarket:
     """Источник с данными только по NEW_BOND; считает обращения"""
 
+    provider = Provider.MOEX
+
     def __init__(self, on_call=None):
         self.calls: list[str] = []
         self.on_call = on_call  # проверка во время «внешнего запроса»
@@ -125,7 +127,7 @@ class FakeMarket:
             raise contracts.MarketDataError(RowErrorCode.PROVIDER_UNAVAILABLE)
         return contracts.MarketSnapshot(
             isin=isin,
-            provider=Provider.RUDATA,
+            provider=Provider.MOEX,
             data_as_of=as_of,
             retrieved_at=datetime.now(UTC),
             currency="RUB",
@@ -140,6 +142,8 @@ class FakeMarket:
 
 
 class FakeFx:
+    source = "cbr"
+
     def __init__(self, rates: dict[str, str] | None = None):
         self.rates = rates or {}
 
@@ -211,7 +215,7 @@ async def test_control_request_from_trades_to_saved_result(api, market_in_db, so
     assert Decimal(rows[USD_BOND]["metric_value"]) > 0
     expected_total = sum(Decimal(row["metric_value"]) for row in calc["results"])
     assert Decimal(calc["total_value"]) == expected_total
-    assert rows[FIXED]["provider"] == "cbonds" and rows[FIXED]["data_as_of"] == "2026-10-20"
+    assert rows[FIXED]["provider"] == "moex" and rows[FIXED]["data_as_of"] == "2026-10-20"
 
     # всё лежит в БД
     with engine.connect() as conn:
@@ -312,7 +316,7 @@ async def test_data_from_source_is_saved_and_reused(api, sources, engine):
 
     first = (await calculate(api, ws_id, h, rev)).json()
     row = first["results"][0]
-    assert first["status"] == "success" and row["provider"] == "rudata"
+    assert first["status"] == "success" and row["provider"] == "moex"
     assert market.calls == [f"instrument:{NEW_BOND}", f"snapshot:{NEW_BOND}"]
 
     # справочник и снимок сохранены, сделка связана с инструментом

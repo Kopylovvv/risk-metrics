@@ -57,7 +57,7 @@ def bond(engine: Engine):
                 "INSERT INTO market_data_snapshots (id, instrument_id, provider, data_as_of,"
                 " retrieved_at, currency, nominal, price_pct, duration_mod, convexity,"
                 " coupon_type, coupon_frequency)"
-                " VALUES (:id, :i, 'cbonds', :d, :t, 'RUB', 1000, 95.5, 3, 12, 'fixed', 2)"
+                " VALUES (:id, :i, 'moex', :d, :t, 'RUB', 1000, 95.5, 3, 12, 'fixed', 2)"
             ),
             {
                 "id": uuid.uuid4(),

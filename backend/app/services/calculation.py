@@ -155,8 +155,14 @@ async def _fetch_missing(
             except contracts.MarketDataError as exc:
                 m.error = exc.code
                 continue
-        # снимок за дату оценки уже есть в БД: источник не нужен (один снимок в день)
-        if m.snapshot is not None and m.snapshot.data_as_of == valuation_date:
+        # снимок этого источника за дату оценки уже есть в БД: повторно не спрашиваем
+        # (у заглушки источника нет, тогда подходит любой сохранённый снимок за эту дату)
+        source = getattr(market, "provider", None)
+        if (
+            m.snapshot is not None
+            and m.snapshot.data_as_of == valuation_date
+            and (source is None or m.snapshot.provider == source)
+        ):
             continue
         try:
             snapshot = await _ask(market.get_snapshot(isin, valuation_date))
@@ -171,15 +177,25 @@ async def _fetch_missing(
         if currency in (None, BASE_CURRENCY):
             continue
         known = prepared.rates.setdefault(currency, _Fx())
-        if known.rate is not None and known.rate.rate_date == valuation_date:
+        fx_source = getattr(fx, "source", None)
+        if (
+            known.rate is not None
+            and known.rate.rate_date == valuation_date
+            and (fx_source is None or known.rate.source == fx_source)
+        ):
             continue
         try:
             rate = await _ask(fx.get_rate_to_rub(currency, valuation_date))
-            _check(rate.currency == currency and rate.rate_date <= valuation_date)
+            _check(
+                rate.currency == currency
+                and rate.rate_date <= valuation_date
+                and rate.rate_to_rub > 0
+            )
             known.new_rate = rate
         except contracts.MarketDataError as exc:
+            # источник курсов не ответил: берём последний сохранённый курс (его дата в ответе)
             if known.rate is None:
-                known.error = exc.code
+                known.error = _fx_error(exc.code)
 
 
 async def _ask(call: Awaitable[T]) -> T:
@@ -191,6 +207,13 @@ async def _ask(call: Awaitable[T]) -> T:
     except Exception as exc:
         logger.exception("Сбой источника данных")
         raise contracts.MarketDataError(RowErrorCode.PROVIDER_UNAVAILABLE) from exc
+
+
+def _fx_error(code: RowErrorCode) -> RowErrorCode:
+    """Недоступность источника курсов отличаем от недоступности рыночных данных"""
+    if code == RowErrorCode.PROVIDER_UNAVAILABLE:
+        return RowErrorCode.FX_PROVIDER_UNAVAILABLE
+    return code
 
 
 def _check(condition: bool) -> None:
@@ -289,6 +312,7 @@ async def _save_snapshots(db: AsyncSession, markets: dict[str, _Market]) -> None
                 **key,
                 retrieved_at=new.retrieved_at,
                 currency=new.currency,
+                settlement_currency=new.settlement_currency,
                 nominal=new.nominal,
                 price_pct=new.price_pct,
                 accrued_interest=new.accrued_interest,
@@ -402,7 +426,7 @@ async def get_calculation(
         select(CalculationResult)
         .outerjoin(Trade, Trade.id == CalculationResult.trade_id)
         .where(CalculationResult.run_id == run_id)
-        .options(selectinload(CalculationResult.snapshot))
+        .options(selectinload(CalculationResult.snapshot), selectinload(CalculationResult.fx_rate))
         .execution_options(populate_existing=True)
         .order_by(Trade.created_at.asc().nulls_last(), CalculationResult.input_isin)
     )

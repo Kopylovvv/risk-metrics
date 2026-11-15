@@ -128,7 +128,9 @@ class MarketDataSnapshot(Base):
     provider: Mapped[Provider] = mapped_column(pg_enum(Provider, "provider"), nullable=False)
     data_as_of: Mapped[date] = mapped_column(Date, nullable=False)  # на какую дату данные
     retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)
+    currency: Mapped[str] = mapped_column(CHAR(3), nullable=False)  # валюта номинала
+    # валюта расчётов по сделкам; может отличаться от валюты номинала, на формулу не влияет
+    settlement_currency: Mapped[str | None] = mapped_column(CHAR(3))
     # параметры могут прийти неполными: NULL, а при расчёте строка получит ошибку
     nominal: Mapped[Decimal | None] = mapped_column(Numeric)  # номинал одной бумаги
     price_pct: Mapped[Decimal | None] = mapped_column(Numeric)  # % от номинала
@@ -232,3 +234,4 @@ class CalculationResult(Base):
 
     run: Mapped[CalculationRun] = relationship(back_populates="results")
     snapshot: Mapped[MarketDataSnapshot | None] = relationship()  # источник и дата данных
+    fx_rate: Mapped[FxRate | None] = relationship()  # источник и дата курса

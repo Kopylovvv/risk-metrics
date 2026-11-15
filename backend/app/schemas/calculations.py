@@ -38,14 +38,29 @@ class CalculationRowOut(BaseModel):
     quantity: int
     status: RowStatus
     error_code: RowErrorCode | None = None
-    provider: Provider | None = None
-    data_as_of: date | None = None
+    # происхождение данных: что и на какую дату подставлено в формулу
+    provider: Provider | None = Field(
+        None, description="Источник цены, НКД, дюрации: moex; test для контрольного набора"
+    )
+    data_as_of: date | None = Field(None, description="Дата торгов, к которой относятся данные")
+    currency: str | None = Field(None, description="Валюта номинала, ISO 4217")
+    settlement_currency: str | None = Field(
+        None, description="Валюта расчётов по сделкам; может отличаться от валюты номинала"
+    )
+    fx_source: str | None = Field(
+        None, description="Источник курса: cbr или demo; null для рублёвой бумаги (курс = 1)"
+    )
+    fx_rate_date: date | None = Field(
+        None, description="Дата, на которую установлен курс; null для рублёвой бумаги"
+    )
     nominal_used: DecimalStr | None = None
     price_pct_used: DecimalStr | None = Field(None, description="Чистая котировка, % от номинала")
     accrued_interest_used: DecimalStr | None = Field(
         None, description="НКД на одну бумагу в валюте номинала; входит в CFV"
     )
-    fx_rate_used: DecimalStr | None = None
+    fx_rate_used: DecimalStr | None = Field(
+        None, description="Рублей за одну единицу валюты номинала; 1 для рублёвой бумаги"
+    )
     current_fair_value: DecimalStr | None = Field(None, description="CFV по цене с НКД, RUB")
     duration_used: DecimalStr | None = None
     convexity_used: DecimalStr | None = None
@@ -88,8 +103,12 @@ class CalculationOut(BaseModel):
                             "quantity": 100,
                             "status": "success",
                             "error_code": None,
-                            "provider": "cbonds",
+                            "provider": "moex",
                             "data_as_of": "2026-10-12",
+                            "currency": "RUB",
+                            "settlement_currency": "RUB",
+                            "fx_source": None,
+                            "fx_rate_date": None,
                             "nominal_used": "1000",
                             "price_pct_used": "95",
                             "accrued_interest_used": "12.5",
@@ -100,6 +119,27 @@ class CalculationOut(BaseModel):
                             "metric_value": "-28.869225",
                         },
                         {
+                            "trade_id": "b2a4c6e8-0000-4000-8000-000000000003",
+                            "isin": "RU000A105A95",
+                            "quantity": -10,
+                            "status": "success",
+                            "error_code": None,
+                            "provider": "moex",
+                            "data_as_of": "2026-10-12",
+                            "currency": "USD",
+                            "settlement_currency": "RUB",
+                            "fx_source": "cbr",
+                            "fx_rate_date": "2026-10-12",
+                            "nominal_used": "1000",
+                            "price_pct_used": "98.5",
+                            "accrued_interest_used": "10.25",
+                            "fx_rate_used": "92.5",
+                            "current_fair_value": "-920606.25",
+                            "duration_used": "4.2",
+                            "convexity_used": "25",
+                            "metric_value": "386.53954921875",
+                        },
+                        {
                             "trade_id": "b2a4c6e8-0000-4000-8000-000000000002",
                             "isin": "RU000A0JX0J2",
                             "quantity": 50,
@@ -107,6 +147,10 @@ class CalculationOut(BaseModel):
                             "error_code": "MISSING_MARKET_DATA",
                             "provider": None,
                             "data_as_of": None,
+                            "currency": None,
+                            "settlement_currency": None,
+                            "fx_source": None,
+                            "fx_rate_date": None,
                             "nominal_used": None,
                             "price_pct_used": None,
                             "accrued_interest_used": None,

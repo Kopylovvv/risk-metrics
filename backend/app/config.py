@@ -53,7 +53,7 @@ CBONDS_DEFAULT_URL = "https://ws2.cbonds.info/services/json/"
 
 
 def cbonds_credentials() -> tuple[str, str, str] | None:
-    """Логин, пароль и адрес web-сервиса Cbonds; None, если доступа нет (тогда заглушка)"""
+    """Логин, пароль и адрес web-сервиса Cbonds; None без доступа. В расчёте не используется"""
     load_env_file()
     login, password = os.getenv("CBONDS_LOGIN", ""), os.getenv("CBONDS_PASSWORD", "")
     if not login or not password:
