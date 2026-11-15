@@ -82,6 +82,40 @@ export function validateQuantity(raw: string | number): {
   return { valid: true, value: val };
 }
 
+// Коды ошибок строки расчёта (RowErrorCode в backend): короткая метка и пояснение
+const ROW_ERRORS: Record<string, { label: string; hint: string }> = {
+  INSTRUMENT_NOT_FOUND: { label: 'Нет выпуска', hint: 'Источник не знает такой ISIN' },
+  MISSING_MARKET_DATA: {
+    label: 'Нет данных',
+    hint: 'У источника нет цены, НКД, дюрации или выпуклости на дату оценки',
+  },
+  INCOMPATIBLE_MARKET_DATA: {
+    label: 'Ошибка данных',
+    hint: 'Источник вернул несовместимые данные (валюта, единицы или невозможные значения)',
+  },
+  PROVIDER_UNAVAILABLE: {
+    label: 'Источник недоступен',
+    hint: 'Источник рыночных данных не ответил, сохранённых данных нет. Повторите позже',
+  },
+  MISSING_FX_RATE: { label: 'Нет курса', hint: 'ЦБ не устанавливал курс этой валюты на дату' },
+  FX_PROVIDER_UNAVAILABLE: {
+    label: 'Курсы недоступны',
+    hint: 'Источник курсов валют не ответил, сохранённого курса нет. Повторите позже',
+  },
+};
+
+export function rowErrorText(code: string | null): { label: string; hint: string } {
+  return (code && ROW_ERRORS[code]) || { label: 'Ошибка', hint: code ?? 'Ошибка расчёта строки' };
+}
+
+// Результат устарел, если набор изменился после расчёта (revision другой)
+export function isResultStale(
+  workspace: { revision: number } | null,
+  result: { workspaceRevision: number } | null,
+): boolean {
+  return workspace !== null && result !== null && workspace.revision !== result.workspaceRevision;
+}
+
 export function formatNumber(value: number, digits = 4): string {
   return value.toLocaleString('ru-RU', {
     minimumFractionDigits: digits,

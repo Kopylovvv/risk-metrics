@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { validateIsin, validateQuantity } from '../src/utils/helpers.ts';
+import { validateIsin, validateQuantity, rowErrorText, isResultStale } from '../src/utils/helpers.ts';
 import {
   mockOpenWorkspace,
   mockAddTrade,
@@ -103,4 +103,23 @@ test('При отсутствии рыночных данных общий ит�
   const failed = await mockRunCalculation(3);
   assert.equal(failed.status, 'failed');
   assert.equal(failed.totalValue, null);
+});
+
+test('Ошибки строк различаются: нет данных, нет выпуска, источник не ответил', () => {
+  assert.equal(rowErrorText('MISSING_MARKET_DATA').label, 'Нет данных');
+  assert.equal(rowErrorText('INSTRUMENT_NOT_FOUND').label, 'Нет выпуска');
+  assert.equal(rowErrorText('PROVIDER_UNAVAILABLE').label, 'Источник недоступен');
+  assert.equal(rowErrorText('MISSING_FX_RATE').label, 'Нет курса');
+  assert.equal(rowErrorText('FX_PROVIDER_UNAVAILABLE').label, 'Курсы недоступны');
+  assert.equal(rowErrorText('INCOMPATIBLE_MARKET_DATA').label, 'Ошибка данных');
+  assert.equal(rowErrorText('SOMETHING_NEW').label, 'Ошибка');
+  assert.equal(rowErrorText('SOMETHING_NEW').hint, 'SOMETHING_NEW');
+});
+
+test('Результат устарел, когда revision набора отличается от revision расчёта', () => {
+  assert.equal(isResultStale({ revision: 3 }, { workspaceRevision: 3 }), false);
+  // после своей правки и после 409 (набор изменила другая вкладка) revision уже другой
+  assert.equal(isResultStale({ revision: 4 }, { workspaceRevision: 3 }), true);
+  assert.equal(isResultStale(null, { workspaceRevision: 3 }), false);
+  assert.equal(isResultStale({ revision: 3 }, null), false);
 });

@@ -107,6 +107,7 @@ export function extractApiError(err: unknown): ApiError | null {
       code: body.code as string,
       message: body.message as string,
       details: Array.isArray(body.details) ? body.details as ApiError['details'] : [],
+      requestId: typeof body.requestId === 'string' ? body.requestId : null,
     };
   }
   return {
@@ -114,6 +115,7 @@ export function extractApiError(err: unknown): ApiError | null {
     code: 'UNKNOWN',
     message: `Ошибка сервера (HTTP ${status})`,
     details: [],
+    requestId: (err.response.headers?.['x-request-id'] as string | undefined) ?? null,
   };
 }
 
@@ -122,6 +124,10 @@ export function getErrorMessage(err: unknown): string {
   if (apiErr) {
     if (apiErr.details.length > 0) {
       return apiErr.details.map((d) => d.message).join('; ');
+    }
+    // при сбое сервера код запроса помогает найти его в логах backend
+    if (apiErr.status >= 500 && apiErr.requestId) {
+      return `${apiErr.message} (код запроса ${apiErr.requestId})`;
     }
     return apiErr.message;
   }
