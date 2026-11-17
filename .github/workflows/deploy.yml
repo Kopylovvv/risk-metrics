@@ -1,0 +1,22 @@
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: ["completed"]
+    branches: ["main"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if:
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Get github sha
+        env:
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: git show --no-patch "$TARGET_SHA" --format='%H %s'

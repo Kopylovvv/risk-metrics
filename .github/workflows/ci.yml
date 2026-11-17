@@ -14,6 +14,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  backend:
+    uses: ./.github/workflows/backend.yml
+  frontend:
+    uses: ./.github/workflows/frontend.yml
+  compose:
+    uses: ./.github/workflows/compose.yml
   infrastructure:
     name: Compose and PostgreSQL
     runs-on: ubuntu-24.04
