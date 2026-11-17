@@ -1,0 +1,16 @@
+on:
+  push:
+    branches: ["infra/41-deploy"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Get github sha
+        env:
+          TARGET_SHA: ${{ github.sha }}
+        run: git show --no-patch "$TARGET_SHA" --format='%H %s'
