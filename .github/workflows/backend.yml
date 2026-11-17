@@ -4,18 +4,8 @@
 name: Backend
 
 on:
-  push:
-    branches: ["**"]
-    paths:
-      - "backend/**"
-      - "compose.yaml"
-      - ".github/workflows/backend.yml"
-  pull_request:
-    paths:
-      - "backend/**"
-      - "compose.yaml"
-      - ".github/workflows/backend.yml"
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
