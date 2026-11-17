@@ -301,4 +301,6 @@ def test_cbonds_is_not_used_even_with_credentials(monkeypatch):
 
     monkeypatch.setenv("CBONDS_LOGIN", "user")
     monkeypatch.setenv("CBONDS_PASSWORD", "secret-password")
-    assert not isinstance(get_market_data(), CbondsMarketData)
+    for sources in ("on", "off"):
+        monkeypatch.setenv("EXTERNAL_SOURCES", sources)
+        assert not isinstance(get_market_data(), CbondsMarketData)

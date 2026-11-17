@@ -1,0 +1,58 @@
+{
+ "description": {
+  "columns": [
+   "name",
+   "value"
+  ],
+  "data": [
+   [
+    "SECID",
+    "SU29021RMFS1"
+   ],
+   [
+    "NAME",
+    "ОФЗ-ПК 29021 27/11/30"
+   ],
+   [
+    "SHORTNAME",
+    "ОФЗ 29021"
+   ],
+   [
+    "ISIN",
+    "RU000A105B11"
+   ],
+   [
+    "MATDATE",
+    "2030-11-27"
+   ],
+   [
+    "FACEUNIT",
+    "SUR"
+   ],
+   [
+    "FACEVALUE",
+    "1000"
+   ],
+   [
+    "COUPONFREQUENCY",
+    "4"
+   ],
+   [
+    "BOND_TYPE",
+    "Облигация с плавающим купоном"
+   ],
+   [
+    "COUPON_DETAILS",
+    "Ставка RUONIA"
+   ],
+   [
+    "GROUP",
+    "stock_bonds"
+   ],
+   [
+    "TYPE",
+    "ofz_bond"
+   ]
+  ]
+ }
+}

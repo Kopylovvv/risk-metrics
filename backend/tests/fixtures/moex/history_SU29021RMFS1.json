@@ -1,0 +1,64 @@
+{
+ "history": {
+  "columns": [
+   "TRADEDATE",
+   "SECID",
+   "BOARDID",
+   "LEGALCLOSEPRICE",
+   "CLOSE",
+   "ACCINT",
+   "FACEVALUE",
+   "FACEUNIT",
+   "CURRENCYID"
+  ],
+  "data": [
+   [
+    "2026-11-11",
+    "SU29021RMFS1",
+    "TQOB",
+    98.2,
+    98.15,
+    26.81,
+    1000,
+    "RUB",
+    "SUR"
+   ],
+   [
+    "2026-11-12",
+    "SU29021RMFS1",
+    "TQOB",
+    98.225,
+    98.226,
+    27.18,
+    1000,
+    "RUB",
+    "SUR"
+   ],
+   [
+    "2026-11-13",
+    "SU29021RMFS1",
+    "TQOB",
+    98.239,
+    98.231,
+    27.56,
+    1000,
+    "RUB",
+    "SUR"
+   ]
+  ]
+ },
+ "history.cursor": {
+  "columns": [
+   "INDEX",
+   "TOTAL",
+   "PAGESIZE"
+  ],
+  "data": [
+   [
+    0,
+    3,
+    100
+   ]
+  ]
+ }
+}

@@ -20,6 +20,10 @@ from app.config import database_url
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
+# тесты не ходят в Мосбиржу и ЦБ: по умолчанию в deps.py заглушки, а адаптеры
+# проверяются на записанных ответах (test_market_data_moex.py, test_market_data_cbr.py)
+os.environ["EXTERNAL_SOURCES"] = "off"
+
 # Windows: psycopg в async-режиме не работает с ProactorEventLoop (стандартным для Windows)
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())

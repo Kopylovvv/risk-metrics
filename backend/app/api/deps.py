@@ -10,9 +10,10 @@ from fastapi import Cookie, Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import contracts, errors
-from app.config import allowed_origins
+from app.config import allowed_origins, external_sources_enabled
 from app.db import CalculationRun, Workspace
 from app.db.session import get_session
+from app.market_data import CbrFxRates, MoexMarketData
 from app.risk_core import calc_dv01
 from app.services.workspaces import hash_session_key
 from app.stubs.sources import NoFxRateSource, NoMarketDataSource
@@ -87,14 +88,19 @@ async def own_calculation(
 
 
 # Точки подключения источников данных и расчётного ядра
-# Параметры облигаций: Мосбиржа (S3-14), курсы: ЦБ РФ (S3-13). Пока адаптеров нет,
-# здесь временные источники из app/stubs: расчёт берёт данные, уже сохранённые в БД
+# Параметры облигаций: Мосбиржа (S3-14), курсы: ЦБ РФ (S3-13); объект на каждый запрос
+# С EXTERNAL_SOURCES=off (тесты, работа без сети) временные источники из app/stubs:
+# расчёт берёт данные, уже сохранённые в БД
 # Cbonds и RuData в рабочем сценарии не используются (решение команды от 14.11.2026)
 def get_market_data() -> contracts.MarketDataProvider:
+    if external_sources_enabled():
+        return MoexMarketData()
     return NoMarketDataSource()
 
 
 def get_fx_rates() -> contracts.FxRateProvider:
+    if external_sources_enabled():
+        return CbrFxRates()
     return NoFxRateSource()
 
 

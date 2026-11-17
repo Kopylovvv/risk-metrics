@@ -1,0 +1,24 @@
+{
+ "securities": {
+  "columns": [
+   "secid",
+   "isin",
+   "shortname",
+   "name",
+   "group",
+   "primary_boardid",
+   "is_traded"
+  ],
+  "data": [
+   [
+    "RU000A105A95",
+    "RU000A105A95",
+    "ГазКЗ-34Д",
+    "Газпром капитал ООО ЗО34-1-Д",
+    "stock_bonds",
+    "TQCB",
+    1
+   ]
+  ]
+ }
+}
