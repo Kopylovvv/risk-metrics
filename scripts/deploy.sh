@@ -72,8 +72,11 @@ cleanup_restore
 trap - EXIT
 
 # Build while the old containers still serve traffic. The DB volume and .env stay on the VM.
-git checkout --detach "$target_sha"
-if ! compose build backend frontend; then
+# Repository content must be readable by non-root image users and bind-mounted services.
+# Private backups and server environment files keep restrictive permissions.
+(umask 022; git checkout --detach "$target_sha")
+python3 scripts/prepare_checkout.py
+if ! compose build backend migrate frontend; then
     git checkout --detach "$previous_sha"
     exit 1
 fi

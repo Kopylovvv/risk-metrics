@@ -23,5 +23,9 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.13"
+      - name: Prepare sources created with a restrictive SSH umask
+        run: |
+          git ls-files -z | xargs -0 chmod go-rwx
+          python scripts/prepare_checkout.py
       - name: Check the complete Compose startup on a temporary database
         run: python scripts/check_compose.py
