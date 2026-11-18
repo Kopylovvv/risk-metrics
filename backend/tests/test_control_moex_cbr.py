@@ -25,9 +25,12 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import text
 
 from app.api.deps import get_fx_rates, get_market_data, get_risk_calculator
 from app.risk_core import calc_dv01
+from app.stubs.sources import NoMarketDataSource
+from tests.test_api_calculations import insert_instrument, insert_snapshot
 from tests.test_api_trades import open_workspace
 from tests.test_integration_s3 import post_trade, run_calc
 from tests.test_market_data_cbr import FakeCbr
@@ -105,6 +108,68 @@ async def test_rub_and_usd_bonds_on_real_parameters(api, sources):
     assert Decimal(usd["accrued_interest_used"]) == Decimal("3.59")  # в долларах, не 297.8993 ₽
     # курс спрошен один раз и только для USD: у рублёвой бумаги внешнего запроса курса нет
     assert cbr.requests == ["13/11/2026"]
+
+
+@pytest.mark.parametrize("cached_moex", [False, True])
+async def test_legacy_demo_catalog_is_refreshed_without_changing_history(
+    api, engine, sources, cached_moex
+):
+    """Old VM: this USD ISIN was seeded as a RUB demo floater, even with a cached MOEX quote."""
+    from app.main import app
+
+    instrument_id = insert_instrument(engine, USD_BOND, "RUB")
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE instruments SET name = 'ДЕМО флоатер' WHERE id = :id"),
+            {"id": instrument_id},
+        )
+    insert_snapshot(
+        engine,
+        instrument_id,
+        provider="test",
+        data_as_of=FRIDAY,
+        price_pct=100,
+        accrued_interest=5,
+        duration_mod=None,
+        convexity=None,
+        coupon_type="floating",
+        coupon_frequency=4,
+    )
+    ws_id, h = await open_workspace(api)
+    assert (await post_trade(api, ws_id, h, USD_BOND, -10, 0)).status_code == 201
+    source = app.dependency_overrides[get_market_data]
+    app.dependency_overrides[get_market_data] = lambda: NoMarketDataSource()
+    old = (await run_calc(api, ws_id, h, 1, FRIDAY)).json()
+    app.dependency_overrides[get_market_data] = source
+    assert (old["status"], old["results"][0]["provider"], old["results"][0]["currency"]) == (
+        "success",
+        "test",
+        "RUB",
+    )
+    iss, _ = sources
+    if cached_moex:
+        snap = await iss.source().get_snapshot(USD_BOND, FRIDAY)
+        insert_snapshot(
+            engine,
+            instrument_id,
+            provider="moex",
+            data_as_of=FRIDAY,
+            currency=snap.currency,
+            nominal=snap.nominal,
+            price_pct=snap.price_pct,
+            accrued_interest=snap.accrued_interest,
+            duration_mod=snap.duration_mod,
+            convexity=snap.convexity,
+        )
+    new = (await run_calc(api, ws_id, h, 1, FRIDAY)).json()
+    assert new["status"] == "success"
+    assert close(new["total_value"], EXPECTED_DV01[USD_BOND])
+    card = (await api.get(f"/api/v1/instruments/{USD_BOND}")).json()
+    assert card["currency"] == "USD" and not card["name"].startswith("ДЕМО ")
+    assert (await api.get(f"/api/v1/calculations/{old['id']}")).json() == old
+    calls = len(iss.requests)
+    assert (await run_calc(api, ws_id, h, 1, FRIDAY)).json()["status"] == "success"
+    assert len(iss.requests) == calls  # Once reconciled, the cached snapshot needs no network.
 
 
 async def test_floater_uses_tz_rule(api, sources):
