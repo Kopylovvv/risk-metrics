@@ -30,7 +30,7 @@ from app.db import (
     Trade,
     Workspace,
 )
-from app.enums import RowErrorCode, RowStatus, RunStatus
+from app.enums import Provider, RowErrorCode, RowStatus, RunStatus
 from app.observability import calculation_stage, error_type, observe_calculation, observe_source
 from app.services.market import latest_rates, latest_snapshots
 from app.services.workspaces import RevisionConflict
@@ -204,8 +204,32 @@ async def _fetch_missing(
             )
         except contracts.MarketDataError as exc:
             # источник не ответил: берём последний сохранённый снимок (его дата есть в ответе)
-            if m.snapshot is None:
+            if m.snapshot is None or (source is not None and m.snapshot.provider != source):
                 m.error = exc.code
+
+    # The former demo catalog assigned RUB to the real USD ISIN RU000A105A95.
+    # Refresh explicitly demo metadata from MOEX; historical snapshots/results stay frozen.
+    # This also covers a MOEX snapshot cached by an earlier, failed calculation.
+    if getattr(market, "provider", None) == Provider.MOEX:
+        for isin, m in prepared.markets.items():
+            snapshot = m.new_snapshot or m.snapshot
+            if (
+                m.error is None
+                and m.instrument is not None
+                and m.instrument.name.startswith("ДЕМО ")
+                and snapshot is not None
+                and snapshot.provider == Provider.MOEX
+            ):
+                try:
+                    m.new_instrument = await _ask(
+                        market.get_instrument(isin),
+                        source=market_source(market),
+                        operation="instrument",
+                        valid=lambda info, isin=isin: info.isin == isin,
+                        isin=isin,
+                    )
+                except contracts.MarketDataError as exc:
+                    m.error = exc.code
 
     for currency in {m.currency for m in prepared.markets.values() if not m.error}:
         if currency in (None, BASE_CURRENCY):
@@ -232,7 +256,8 @@ async def _fetch_missing(
             )
         except contracts.MarketDataError as exc:
             # источник курсов не ответил: берём последний сохранённый курс (его дата в ответе)
-            if known.rate is None:
+            if known.rate is None or (fx_source is not None and known.rate.source != fx_source):
+                known.rate = None
                 known.error = _fx_error(exc.code)
 
 
@@ -367,9 +392,20 @@ async def _save_instruments(
                 instrument_type=info.instrument_type,
                 currency=info.currency,
             )
-            .on_conflict_do_nothing(index_elements=["isin"])  # его мог добавить другой расчёт
+            .on_conflict_do_update(
+                index_elements=["isin"],
+                set_={
+                    "name": info.name,
+                    "instrument_type": info.instrument_type,
+                    "currency": info.currency,
+                },
+            )
         )
-        m.instrument = await db.scalar(select(Instrument).where(Instrument.isin == isin))
+        m.instrument = await db.scalar(
+            select(Instrument)
+            .where(Instrument.isin == isin)
+            .execution_options(populate_existing=True)
+        )
         # сделки набора с этим ISIN теперь связаны со справочником
         await db.execute(
             update(Trade)

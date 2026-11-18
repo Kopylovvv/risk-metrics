@@ -144,11 +144,9 @@ async def test_rows_show_source_and_dates_of_quote_and_fx(api, moex_cbr):
     )
 
 
-async def test_test_source_is_distinguishable(api, engine, moex_cbr):
-    """Контрольный набор виден в ответе как test, курс как demo"""
-    market, fx = moex_cbr
-    market.down = True
-    fx.mode = "down"
+async def test_test_source_is_distinguishable(api, engine, monkeypatch):
+    """Явный EXTERNAL_SOURCES=off: контрольный набор виден как test, курс как demo"""
+    monkeypatch.setenv("EXTERNAL_SOURCES", "off")
     instrument_id = insert_instrument(engine, USD_BOND, "USD")
     insert_snapshot(engine, instrument_id, provider="test", currency="USD")
     insert_rate(engine, "USD", "90", DAY, "demo")
@@ -201,6 +199,27 @@ async def test_moex_is_asked_when_only_test_data_of_the_day_is_saved(api, engine
     again = (await calculate(api, ws_id, h, rev)).json()["results"][0]
     assert (again["provider"], again["price_pct_used"]) == ("moex", "101.2")
     assert len(market.calls) == 1
+
+
+async def test_moex_outage_does_not_fall_back_to_demo_snapshot(api, engine, moex_cbr):
+    market, _ = moex_cbr
+    insert_snapshot(engine, insert_instrument(engine, NEW_BOND), provider="test")
+    market.down = True
+    ws_id, h, rev = await workspace_with(api, (NEW_BOND, 100))
+    result = (await calculate(api, ws_id, h, rev)).json()
+    assert result["status"] == "failed" and result["total_value"] is None
+    assert result["results"][0]["error_code"] == "PROVIDER_UNAVAILABLE"
+
+
+async def test_cbr_outage_does_not_fall_back_to_demo_rate(api, engine, moex_cbr):
+    _, fx = moex_cbr
+    insert_snapshot(engine, insert_instrument(engine, USD_BOND, "USD"), currency="USD")
+    insert_rate(engine, "USD", "92.5", DAY, "demo")
+    fx.mode = "down"
+    ws_id, h, rev = await workspace_with(api, (USD_BOND, -10))
+    result = (await calculate(api, ws_id, h, rev)).json()
+    assert result["status"] == "failed" and result["total_value"] is None
+    assert result["results"][0]["error_code"] == "FX_PROVIDER_UNAVAILABLE"
 
 
 # --- курсы ЦБ ---------------------------------------------------------------------------
@@ -268,9 +287,12 @@ async def test_cbr_rate_wins_over_demo_of_same_day(api, engine, moex_cbr):
 
 
 async def test_new_quote_and_rate_do_not_change_saved_calculation(api, engine, moex_cbr):
+    from app.main import app
+
     market, fx = moex_cbr
-    market.down = True
-    fx.mode = "down"
+    # The historical demo calculation is created in explicit offline mode.
+    app.dependency_overrides[get_market_data] = lambda: NoMarketDataSource()
+    app.dependency_overrides[get_fx_rates] = lambda: NoFxRateSource()
     instrument_id = insert_instrument(engine, USD_BOND, "USD")
     insert_snapshot(engine, instrument_id, provider="test", currency="USD", price_pct="98.5")
     insert_rate(engine, "USD", "90", DAY, "demo")
@@ -279,8 +301,8 @@ async def test_new_quote_and_rate_do_not_change_saved_calculation(api, engine, m
     assert (old["results"][0]["provider"], old["results"][0]["fx_source"]) == ("test", "demo")
 
     # позже пришли данные Мосбиржи и курс ЦБ за тот же день: новый расчёт берёт их
-    market.down = False
-    fx.mode = "ok"
+    app.dependency_overrides[get_market_data] = lambda: market
+    app.dependency_overrides[get_fx_rates] = lambda: fx
     new = (await calculate(api, ws_id, h, rev)).json()
     assert (new["results"][0]["provider"], new["results"][0]["fx_source"]) == ("moex", "cbr")
     assert new["results"][0]["fx_rate_used"] == "92.5"

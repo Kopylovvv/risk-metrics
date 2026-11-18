@@ -1,3 +1,13 @@
+# Risk Metrics — Чайные кони
+
+Стенд команды: https://teahorses.mhimf.net/ .
+
+Материалы третьего показа: [сценарий](docs/sprint3-demo.md),
+[презентация PowerPoint](docs/presentation-sprint3.pptx),
+[спецификация текущего frontend для сверки](docs/frontend-current-spec.md).
+Эксплуатация: [развёртывание](docs/deployment.md), [доступ команды](docs/team-access.md),
+[метрики и диагностика](docs/monitoring.md).
+
 ## Общий запуск frontend, backend и PostgreSQL
 
 Требования: установленный и запущенный Docker с Docker Compose.
