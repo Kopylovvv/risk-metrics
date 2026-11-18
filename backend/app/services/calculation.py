@@ -204,7 +204,7 @@ async def _fetch_missing(
             )
         except contracts.MarketDataError as exc:
             # источник не ответил: берём последний сохранённый снимок (его дата есть в ответе)
-            if m.snapshot is None:
+            if m.snapshot is None or (source is not None and m.snapshot.provider != source):
                 m.error = exc.code
 
     # The former demo catalog assigned RUB to the real USD ISIN RU000A105A95.
@@ -256,7 +256,8 @@ async def _fetch_missing(
             )
         except contracts.MarketDataError as exc:
             # источник курсов не ответил: берём последний сохранённый курс (его дата в ответе)
-            if known.rate is None:
+            if known.rate is None or (fx_source is not None and known.rate.source != fx_source):
+                known.rate = None
                 known.error = _fx_error(exc.code)
 
 

@@ -127,7 +127,7 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(risk_http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(risk_http_requests_total[5m])), 0.001)",
+          "expr": "(sum(rate(risk_http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(risk_http_requests_total[5m])), 0.001)) or vector(0)",
           "refId": "A",
           "legendFormat": "{{route}}{{status}}{{stage}}{{source}}{{outcome}}{{instance}}{{alertname}}"
         }
@@ -331,7 +331,7 @@
       },
       "targets": [
         {
-          "expr": "ALERTS{alertstate=\"firing\"}",
+          "expr": "(ALERTS{alertstate=\"firing\"}) or vector(0)",
           "refId": "A",
           "legendFormat": "{{route}}{{status}}{{stage}}{{source}}{{outcome}}{{instance}}{{alertname}}"
         }
