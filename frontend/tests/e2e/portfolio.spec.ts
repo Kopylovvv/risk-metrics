@@ -1,6 +1,29 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Основной пользовательский сценарий (E2E)', () => {
+  test('Ошибочный ISIN отменяет отображение старого ответа справочника', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('#trade-form')).toBeVisible();
+    let releaseLookup!: () => void;
+    const lookupGate = new Promise<void>((resolve) => { releaseLookup = resolve; });
+    await page.route('**/api/v1/instruments/RU000A1038V6', async (route) => {
+      await lookupGate;
+      await route.continue();
+    }, { times: 1 });
+    const requested = page.waitForRequest('**/api/v1/instruments/RU000A1038V6');
+    await page.locator('#isin-input').fill('RU000A1038V6');
+    await page.locator('#isin-input').blur();
+    await requested;
+    await page.locator('#isin-input').fill('BAD');
+    await page.locator('#isin-input').blur();
+    const responded = page.waitForResponse('**/api/v1/instruments/RU000A1038V6');
+    releaseLookup();
+    await responded;
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText('ДЕМО ОФЗ, фиксированный купон', { exact: true })).not.toBeVisible();
+    await expect(page.getByText('Введите ISIN в форме слева или выберите сделку для просмотра параметров')).toBeVisible();
+  });
+
   test('Полный цикл: добавление, правка, удаление, расчёт, partial без итога, устаревание и перезагрузка', async ({ page }) => {
     // 1. Открытие страницы: чистая сессия и пустой портфель
     await page.goto('/');
@@ -44,13 +67,30 @@ test.describe('Основной пользовательский сценари�
     await expect(page.locator('#trade-list')).not.toContainText('RU000A105A95');
     await expect(page.locator('text=Сделок в портфеле: 1')).toBeVisible();
 
+    // Hold the real calculation request to verify pending UI without a timing race.
+    let releaseCalculation!: () => void;
+    const calculationGate = new Promise<void>((resolve) => { releaseCalculation = resolve; });
+    await page.route('**/api/v1/workspaces/*/calculations', async (route) => {
+      await calculationGate;
+      await route.continue();
+    }, { times: 1 });
+
     // 6. Запуск расчёта (полный расчёт success)
     await expect(page.locator('#calculate-btn')).toBeEnabled();
     await page.locator('#calculate-btn').click();
 
+    await expect(page.locator('#calculate-btn')).toBeDisabled();
+    await expect(page.locator('#isin-input')).toBeDisabled();
+    await expect(page.locator('#quantity-input')).toBeDisabled();
+    await expect(page.locator('#add-trade-btn')).toBeDisabled();
+    await expect(page.locator('#trade-list button[title="Редактировать"]').first()).toBeDisabled();
+    releaseCalculation();
+
     // Проверяем успешный результат
     await expect(page.locator('text=Полный расчёт')).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('#total-dv01')).toBeVisible();
+    await expect(page.locator('#test-data-notice')).toBeVisible();
+    await expect(page.locator('table')).toContainText('TEST');
     await expect(page.locator('text=Справедливая стоимость позиции (CurrentFairValue)')).toBeVisible();
     await expect(page.locator('table')).toContainText('RU000A1038V6');
     await expect(page.locator('table')).toContainText('150');

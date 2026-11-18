@@ -92,7 +92,7 @@ export default function App() {
 
   const handleAddTrade = useCallback(
     async (isin: string, quantity: number) => {
-      if (mutating) return;
+      if (mutating || calculating) return;
       setMutating(true);
       setMutError(null);
       try {
@@ -114,12 +114,12 @@ export default function App() {
         setMutating(false);
       }
     },
-    [revision, mutating, applyWorkspace, handleConflict],
+    [revision, mutating, calculating, applyWorkspace, handleConflict],
   );
 
   const handleRemoveTrade = useCallback(
     async (tradeId: string) => {
-      if (mutating) return;
+      if (mutating || calculating) return;
       setMutating(true);
       setMutError(null);
       try {
@@ -137,12 +137,12 @@ export default function App() {
         setMutating(false);
       }
     },
-    [revision, mutating, applyWorkspace, handleConflict],
+    [revision, mutating, calculating, applyWorkspace, handleConflict],
   );
 
   const handleUpdateTrade = useCallback(
     async (tradeId: string, quantity: number) => {
-      if (mutating) return;
+      if (mutating || calculating) return;
       setMutating(true);
       setMutError(null);
       try {
@@ -160,7 +160,7 @@ export default function App() {
         setMutating(false);
       }
     },
-    [revision, mutating, applyWorkspace, handleConflict],
+    [revision, mutating, calculating, applyWorkspace, handleConflict],
   );
 
   async function handleCalculate() {
@@ -245,7 +245,7 @@ export default function App() {
               onCalculate={handleCalculate}
               calculating={calculating}
               calcError={calcError}
-              mutating={mutating}
+              mutating={mutating || calculating}
               mutError={mutError}
             />
           </div>
