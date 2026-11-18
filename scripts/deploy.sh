@@ -47,14 +47,18 @@ compose() {
 # Retain the exact previous images for a code rollback without rebuilding dependencies.
 sudo -n docker inspect risk-metrics-backend-1 risk-metrics-frontend-1 > "$backup_dir/containers.json"
 python3 - "$backup_dir" <<'PY_IMAGES'
-import json,sys
+import json,sys,subprocess
 from pathlib import Path
 p=Path(sys.argv[1]); containers=json.loads((p/'containers.json').read_text())
 services={}
 for c in containers:
     name=c['Config']['Labels']['com.docker.compose.service']
-    services[name]={'image':c['Image']}
-    if name=='backend': services['migrate']={'image':c['Image']}
+    # Pin the image reference before rebuilding its mutable Compose tag.
+    # Docker's container .Image may be a config digest rather than an inspectable image ID.
+    pin=f'risk-metrics-rollback/{name}:{p.name}'
+    subprocess.run(['sudo','-n','docker','tag',c['Config']['Image'],pin],check=True)
+    services[name]={'image':pin,'pull_policy':'never'}
+    if name=='backend': services['migrate']={'image':pin,'pull_policy':'never'}
 (p/'rollback-images.json').write_text(json.dumps({'services':services}))
 PY_IMAGES
 compose exec -T db sh -c 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec pg_dump -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$backup_dir/database.dump"
@@ -72,10 +76,23 @@ cleanup_restore
 trap - EXIT
 
 # Build while the old containers still serve traffic. The DB volume and .env stay on the VM.
-git checkout --detach "$target_sha"
-if ! compose build backend frontend; then
-    git checkout --detach "$previous_sha"
+# Repository content must be readable by non-root image users and bind-mounted services.
+# Private backups and server environment files keep restrictive permissions.
+(umask 022; git checkout --detach "$target_sha")
+python3 scripts/prepare_checkout.py
+if ! compose build backend migrate frontend; then
+    (umask 022; git checkout --detach "$previous_sha")
     exit 1
+fi
+# Apply migrations before replacing healthy application containers.
+if ! compose run --rm -T --no-deps migrate; then
+    echo "Migration failed; existing application containers were not replaced. Backup: $backup_dir" >&2
+    (umask 022; git checkout --detach "$previous_sha")
+    exit 1
+fi
+if [[ -f compose.monitoring.yaml && -f .monitoring.env ]]; then
+    # Recreate file bind mounts after Git replaces config files (new inodes).
+    compose up -d --no-build --no-deps --force-recreate prometheus blackbox grafana
 fi
 if ! compose up -d --no-build --wait --wait-timeout 180; then
     echo "Deployment failed. Backup: $backup_dir" >&2
@@ -88,6 +105,10 @@ for service in backend frontend; do
     installed=$(sudo -n docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$container")
     [[ $installed == "$target_sha" ]]
 done
+if [[ -f compose.monitoring.yaml && -f .monitoring.env ]]; then
+    curl --fail --silent --show-error --retry 15 --retry-connrefused --retry-delay 2 http://127.0.0.1:9090/-/ready
+    curl --fail --silent --show-error --retry 15 --retry-connrefused --retry-delay 2 http://127.0.0.1:3000/api/health
+fi
 cmp .env "$backup_dir/environment"
 printf '%s\n' "$target_sha" > .git/deployed-sha
 printf '%s\n' "$backup_dir" > .git/last-deploy-backup

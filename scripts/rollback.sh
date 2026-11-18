@@ -21,7 +21,7 @@ git diff --cached --quiet
 git checkout --detach "$previous_sha"
 files=(-f compose.yaml)
 if [[ -f compose.override.yaml ]]; then files+=(-f compose.override.yaml); fi
-sudo -n docker compose "${files[@]}" -f "$backup_dir/rollback-images.json" up -d --no-build --wait --wait-timeout 180
+sudo -n env APP_REVISION="$previous_sha" docker compose "${files[@]}" -f "$backup_dir/rollback-images.json" up -d --no-build --wait --wait-timeout 180
 curl --fail --silent --show-error http://127.0.0.1:8080/health/ready
 printf '%s\n' "$previous_sha" > .git/deployed-sha
 printf '\nRolled back application to %s\n' "$previous_sha"
