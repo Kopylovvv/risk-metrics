@@ -5,6 +5,7 @@
 Материалы третьего показа: [сценарий](docs/sprint3-demo.md),
 [презентация PowerPoint](docs/presentation-sprint3.pptx),
 [спецификация текущего frontend для сверки](docs/frontend-current-spec.md).
+[Протокол приёмки](docs/sprint3-acceptance.md).
 Эксплуатация: [развёртывание](docs/deployment.md), [доступ команды](docs/team-access.md),
 [метрики и диагностика](docs/monitoring.md).
 
