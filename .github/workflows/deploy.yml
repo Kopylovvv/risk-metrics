@@ -1,3 +1,5 @@
+name: Deploy on vps
+
 on:
   workflow_run:
     workflows: ["CI"]
@@ -7,8 +9,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if:
-      github.event.workflow_run.conclusion == 'success' &&
+    if: github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push'
     steps:
       - name: Check out repository
@@ -20,3 +21,21 @@ jobs:
         env:
           TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
         run: git show --no-patch "$TARGET_SHA" --format='%H %s'
+      - name: prepare ssh
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          umask 077
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$RUNNER_TEMP/deploy-key"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/deploy-known-hosts"
+      - name: check ssh auth
+        run: |
+          ssh \
+          -i "$RUNNER_TEMP/deploy-key" \
+          -o "UserKnownHostsFile=$RUNNER_TEMP/deploy-known-hosts" \
+          -o "BatchMode=yes" \
+          -o "IdentitiesOnly=yes" \
+          -o "StrictHostKeyChecking=yes" \
+          teahorses@158.160.170.45 \
+          'whoami; hostname'
