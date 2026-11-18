@@ -1,0 +1,50 @@
+{
+ "history_yields": {
+  "columns": [
+   "TRADEDATE",
+   "SECID",
+   "BOARDID",
+   "YIELDDATE",
+   "YIELDDATETYPE",
+   "PRICE",
+   "ACCINT",
+   "EFFECTIVEYIELD",
+   "DURATION"
+  ],
+  "data": [
+   [
+    "2026-11-11",
+    "SU29021RMFS1",
+    "TQOB",
+    "2030-11-27",
+    "MATDATE",
+    98.15,
+    27.18,
+    15.5179,
+    1115
+   ],
+   [
+    "2026-11-12",
+    "SU29021RMFS1",
+    "TQOB",
+    "2030-11-27",
+    "MATDATE",
+    98.226,
+    27.56,
+    15.4901,
+    1115
+   ],
+   [
+    "2026-11-13",
+    "SU29021RMFS1",
+    "TQOB",
+    "2030-11-27",
+    "MATDATE",
+    98.231,
+    28.69,
+    15.4907,
+    1112
+   ]
+  ]
+ }
+}

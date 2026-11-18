@@ -62,11 +62,20 @@ export default function InstrumentInfo({ instrument }: InstrumentInfoProps) {
         </div>
 
         <div>
-          <span className="block text-[11px] text-slate-400 mb-1">Валюта</span>
+          <span className="block text-[11px] text-slate-400 mb-1">Валюта номинала</span>
           <span className="font-mono text-[14px] font-medium text-white tracking-wide">
             {instrument.currency}
           </span>
         </div>
+
+        {instrument.settlementCurrency && instrument.settlementCurrency !== instrument.currency && (
+          <div>
+            <span className="block text-[11px] text-slate-400 mb-1">Валюта расчётов</span>
+            <span className="font-mono text-[14px] font-medium text-white tracking-wide">
+              {instrument.settlementCurrency}
+            </span>
+          </div>
+        )}
 
         <div>
           <span className="block text-[11px] text-slate-400 mb-1">Тип купона</span>

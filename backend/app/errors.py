@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import InterfaceError, OperationalError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.observability import REQUEST_ID_HEADER, error_code_var, error_type, request_id_var
 from app.schemas.common import ErrorDetail, ErrorOut
 from app.services.calculation import WorkspaceEmpty
 from app.services.workspaces import RevisionConflict, TradeNotFound
@@ -60,7 +61,11 @@ def validation_error(message: str, field: str | None = None) -> ApiError:
 
 
 def _json(status: int, body: ErrorOut) -> JSONResponse:
-    return JSONResponse(status_code=status, content=body.model_dump(mode="json"))
+    # код ошибки попадает в событие http.request, request_id в тело и заголовок
+    error_code_var.set(body.code)
+    body.request_id = request_id_var.get()
+    headers = {REQUEST_ID_HEADER: body.request_id} if body.request_id else None
+    return JSONResponse(status_code=status, content=body.model_dump(mode="json"), headers=headers)
 
 
 def register_error_handlers(app: FastAPI) -> None:
@@ -108,14 +113,14 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(OperationalError)
     @app.exception_handler(InterfaceError)
     async def _db_down(_: Request, exc: Exception) -> JSONResponse:
-        logger.error("База данных недоступна: %s", exc)
+        logger.error("db.unavailable", extra={"error_type": error_type(exc), "detail": str(exc)})
         message = "База данных недоступна, повторите позже"
         return _json(503, ErrorOut(code="DATABASE_UNAVAILABLE", message=message))
 
     # всё непредвиденное: подробности только в лог, клиенту общий ответ
     @app.exception_handler(Exception)
     async def _unexpected(_: Request, exc: Exception) -> JSONResponse:
-        logger.exception("Необработанная ошибка", exc_info=exc)
+        logger.error("unhandled", exc_info=exc, extra={"error_type": error_type(exc)})
         return _json(500, ErrorOut(code="INTERNAL_ERROR", message="Внутренняя ошибка сервера"))
 
 

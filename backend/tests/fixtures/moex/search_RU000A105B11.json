@@ -1,0 +1,24 @@
+{
+ "securities": {
+  "columns": [
+   "secid",
+   "isin",
+   "shortname",
+   "name",
+   "group",
+   "primary_boardid",
+   "is_traded"
+  ],
+  "data": [
+   [
+    "SU29021RMFS1",
+    "RU000A105B11",
+    "ОФЗ 29021",
+    "ОФЗ-ПК 29021 27/11/30",
+    "stock_bonds",
+    "TQOB",
+    1
+   ]
+  ]
+ }
+}

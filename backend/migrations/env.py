@@ -10,7 +10,8 @@ from app.db import Base
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # не выключать уже созданные логгеры приложения (тесты запускают миграции в том же процессе)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Схема из моделей: по ней работают autogenerate и alembic check
 target_metadata = Base.metadata

@@ -6,9 +6,26 @@ from enum import StrEnum
 class Provider(StrEnum):
     """Источник рыночных данных (enum provider в БД)"""
 
+    MOEX = "moex"  # Московская биржа: источник параметров облигаций для новых расчётов
+    TEST = "test"  # контрольный набор, только для тестового окружения
+    # больше не используются в расчёте, остаются для чтения сохранённых снимков
     CBONDS = "cbonds"
     RUDATA = "rudata"
-    TEST = "test"  # контрольный набор, только для тестового окружения
+
+
+# Источники для новых расчётов в порядке предпочтения: снимки Cbonds и RuData не берутся
+ACTIVE_PROVIDERS = (Provider.MOEX, Provider.TEST)
+
+
+class FxSource(StrEnum):
+    """Источник курса валюты (fx_rates.source)"""
+
+    CBR = "cbr"  # официальный курс ЦБ РФ
+    DEMO = "demo"  # демо-данные
+
+
+# Источники курсов в порядке предпочтения
+ACTIVE_FX_SOURCES = (FxSource.CBR, FxSource.DEMO)
 
 
 class CouponType(StrEnum):
@@ -41,4 +58,5 @@ class RowErrorCode(StrEnum):
     MISSING_MARKET_DATA = "MISSING_MARKET_DATA"
     PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
     INCOMPATIBLE_MARKET_DATA = "INCOMPATIBLE_MARKET_DATA"
-    MISSING_FX_RATE = "MISSING_FX_RATE"
+    MISSING_FX_RATE = "MISSING_FX_RATE"  # источник курсов ответил, но курса нет
+    FX_PROVIDER_UNAVAILABLE = "FX_PROVIDER_UNAVAILABLE"  # источник курсов не ответил

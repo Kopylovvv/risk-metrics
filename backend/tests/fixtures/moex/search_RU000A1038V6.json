@@ -1,0 +1,24 @@
+{
+ "securities": {
+  "columns": [
+   "secid",
+   "isin",
+   "shortname",
+   "name",
+   "group",
+   "primary_boardid",
+   "is_traded"
+  ],
+  "data": [
+   [
+    "SU26238RMFS4",
+    "RU000A1038V6",
+    "ОФЗ 26238",
+    "ОФЗ-ПД 26238 15/05/2041",
+    "stock_bonds",
+    "TQOB",
+    1
+   ]
+  ]
+ }
+}

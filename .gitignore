@@ -63,3 +63,6 @@ logs/
 ._*
 Thumbs.db
 Desktop.ini
+
+# Server-only monitoring credentials
+.monitoring.env

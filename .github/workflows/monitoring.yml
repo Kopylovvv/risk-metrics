@@ -1,0 +1,22 @@
+name: Monitoring configuration
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  monitoring:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Validate complete monitoring Compose configuration
+        env:
+          POSTGRES_DB: risk_ci
+          POSTGRES_USER: risk_ci
+          POSTGRES_PASSWORD: ci_only_password
+          GRAFANA_ADMIN_PASSWORD: ci_only_monitoring_password
+        run: docker compose -f compose.yaml -f compose.monitoring.yaml config --quiet
+      - name: Validate Prometheus configuration and alert recovery
+        run: |
+          docker run --rm --entrypoint promtool -v "$PWD/monitoring:/etc/prometheus:ro" prom/prometheus:v3.16.0 check config /etc/prometheus/prometheus.yml
+          docker run --rm --entrypoint promtool -v "$PWD/monitoring:/etc/prometheus:ro" -w /etc/prometheus prom/prometheus:v3.16.0 test rules alerts.test.yml

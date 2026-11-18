@@ -7,8 +7,9 @@
 """
 
 import logging
+import time
 import uuid
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -30,6 +31,7 @@ from app.db import (
     Workspace,
 )
 from app.enums import RowErrorCode, RowStatus, RunStatus
+from app.observability import calculation_stage, error_type, observe_calculation, observe_source
 from app.services.market import latest_rates, latest_snapshots
 from app.services.workspaces import RevisionConflict
 
@@ -44,6 +46,10 @@ BASE_CURRENCY = "RUB"
 
 class WorkspaceEmpty(Exception):
     """В наборе нет сделок"""
+
+
+# отказ до записи результата: в метрике расчётов свой статус, а не error
+_REJECTED = {RevisionConflict: "conflict", WorkspaceEmpty: "empty"}
 
 
 @dataclass
@@ -96,10 +102,28 @@ async def run_calculation(
     fx: contracts.FxRateProvider,
     calc: contracts.RiskCalculator,
 ) -> uuid.UUID:
-    """Считает DV01 по набору и сохраняет результат; возвращает id запуска"""
-    prepared = await _read_inputs(db, workspace, expected_revision, valuation_date)
-    await _fetch_missing(prepared, valuation_date, market, fx)
-    return await _save(db, workspace, expected_revision, valuation_date, prepared, calc)
+    """Считает DV01 по набору и сохраняет результат; возвращает id запуска
+
+    Каждый этап пишет событие calc.stage, итог пишет calc.finished и метрики расчёта
+    """
+    started = time.perf_counter()
+    try:
+        with calculation_stage("read"):
+            prepared = await _read_inputs(db, workspace, expected_revision, valuation_date)
+        with calculation_stage("sources"):
+            await _fetch_missing(prepared, valuation_date, market, fx)
+        with calculation_stage("write"):
+            run_id, status, rows = await _save(
+                db, workspace, expected_revision, valuation_date, prepared, calc
+            )
+    except Exception as exc:
+        outcome = _REJECTED.get(type(exc), "error")
+        observe_calculation(outcome, time.perf_counter() - started, [], error_type=error_type(exc))
+        raise
+    observe_calculation(
+        status.value, time.perf_counter() - started, rows, calculation_id=str(run_id)
+    )
+    return run_id
 
 
 # --- шаг 1: чтение -------------------------------------------------------------
@@ -149,19 +173,35 @@ async def _fetch_missing(
     for isin, m in prepared.markets.items():
         if m.instrument is None:
             try:
-                info = await _ask(market.get_instrument(isin))
-                _check(info.isin == isin)
-                m.new_instrument = info
+                m.new_instrument = await _ask(
+                    market.get_instrument(isin),
+                    source=market_source(market),
+                    operation="instrument",
+                    valid=lambda info, isin=isin: info.isin == isin,
+                    isin=isin,
+                )
             except contracts.MarketDataError as exc:
                 m.error = exc.code
                 continue
-        # снимок за дату оценки уже есть в БД: источник не нужен (один снимок в день)
-        if m.snapshot is not None and m.snapshot.data_as_of == valuation_date:
+        # снимок этого источника за дату оценки уже есть в БД: повторно не спрашиваем
+        # (у заглушки источника нет, тогда подходит любой сохранённый снимок за эту дату)
+        source = getattr(market, "provider", None)
+        if (
+            m.snapshot is not None
+            and m.snapshot.data_as_of == valuation_date
+            and (source is None or m.snapshot.provider == source)
+        ):
             continue
         try:
-            snapshot = await _ask(market.get_snapshot(isin, valuation_date))
-            _check(snapshot.isin == isin and snapshot.data_as_of <= valuation_date)
-            m.new_snapshot = snapshot
+            m.new_snapshot = await _ask(
+                market.get_snapshot(isin, valuation_date),
+                source=market_source(market),
+                operation="snapshot",
+                valid=lambda snap, isin=isin: (
+                    snap.isin == isin and snap.data_as_of <= valuation_date
+                ),
+                isin=isin,
+            )
         except contracts.MarketDataError as exc:
             # источник не ответил: берём последний сохранённый снимок (его дата есть в ответе)
             if m.snapshot is None:
@@ -171,26 +211,91 @@ async def _fetch_missing(
         if currency in (None, BASE_CURRENCY):
             continue
         known = prepared.rates.setdefault(currency, _Fx())
-        if known.rate is not None and known.rate.rate_date == valuation_date:
+        fx_source = getattr(fx, "source", None)
+        if (
+            known.rate is not None
+            and known.rate.rate_date == valuation_date
+            and (fx_source is None or known.rate.source == fx_source)
+        ):
             continue
         try:
-            rate = await _ask(fx.get_rate_to_rub(currency, valuation_date))
-            _check(rate.currency == currency and rate.rate_date <= valuation_date)
-            known.new_rate = rate
+            known.new_rate = await _ask(
+                fx.get_rate_to_rub(currency, valuation_date),
+                source=fx_source_name(fx),
+                operation="fx_rate",
+                valid=lambda rate, currency=currency: (
+                    rate.currency == currency
+                    and rate.rate_date <= valuation_date
+                    and rate.rate_to_rub > 0
+                ),
+                currency=currency,
+            )
         except contracts.MarketDataError as exc:
+            # источник курсов не ответил: берём последний сохранённый курс (его дата в ответе)
             if known.rate is None:
-                known.error = exc.code
+                known.error = _fx_error(exc.code)
 
 
-async def _ask(call: Awaitable[T]) -> T:
-    """Запрос к источнику: любой сбой адаптера становится ошибкой строки, а не ответом 500"""
+def market_source(market: contracts.MarketDataProvider) -> str:
+    """Имя источника для диагностики: moex, test; none у временной заглушки"""
+    provider = getattr(market, "provider", None)
+    return provider.value if provider is not None else "none"
+
+
+def fx_source_name(fx: contracts.FxRateProvider) -> str:
+    return getattr(fx, "source", None) or "none"
+
+
+async def _ask(
+    call: Awaitable[T],
+    *,
+    source: str,
+    operation: str,
+    valid: Callable[[T], bool] = lambda _: True,
+    **fields: object,
+) -> T:
+    """Запрос к источнику: любой сбой адаптера становится ошибкой строки, а не ответом 500
+
+    Длительность и исход (ok или код ошибки) уходят в событие source.request и метрики
+    """
+    unavailable = (
+        RowErrorCode.FX_PROVIDER_UNAVAILABLE
+        if operation == "fx_rate"
+        else RowErrorCode.PROVIDER_UNAVAILABLE
+    )
+    started = time.perf_counter()
     try:
-        return await call
-    except contracts.MarketDataError:
+        result = await call
+        _check(valid(result))
+    except contracts.MarketDataError as exc:
+        # недоступность курсов и рыночных данных различаем по операции, а не по коду адаптера
+        code = exc.code
+        if code in (RowErrorCode.PROVIDER_UNAVAILABLE, RowErrorCode.FX_PROVIDER_UNAVAILABLE):
+            code = unavailable
+        observe_source(source, operation, code.value, time.perf_counter() - started, **fields)
+        if code != exc.code:
+            raise contracts.MarketDataError(code, str(exc)) from exc
         raise
     except Exception as exc:
-        logger.exception("Сбой источника данных")
-        raise contracts.MarketDataError(RowErrorCode.PROVIDER_UNAVAILABLE) from exc
+        observe_source(
+            source,
+            operation,
+            unavailable.value,
+            time.perf_counter() - started,
+            error_type=error_type(exc),
+            **fields,
+        )
+        logger.warning("source.crash", exc_info=exc, extra={"source": source})
+        raise contracts.MarketDataError(unavailable) from exc
+    observe_source(source, operation, "ok", time.perf_counter() - started, **fields)
+    return result
+
+
+def _fx_error(code: RowErrorCode) -> RowErrorCode:
+    """Недоступность источника курсов отличаем от недоступности рыночных данных"""
+    if code == RowErrorCode.PROVIDER_UNAVAILABLE:
+        return RowErrorCode.FX_PROVIDER_UNAVAILABLE
+    return code
 
 
 def _check(condition: bool) -> None:
@@ -209,7 +314,7 @@ async def _save(
     valuation_date: date,
     prepared: _Prepared,
     calc: contracts.RiskCalculator,
-) -> uuid.UUID:
+) -> tuple[uuid.UUID, RunStatus, list[tuple[str, str]]]:
     # пока шли внешние запросы, набор могли изменить: тогда результат уже не про него
     revision = await db.scalar(
         select(Workspace.revision).where(Workspace.id == workspace.id).with_for_update()
@@ -240,9 +345,10 @@ async def _save(
         completed_at=func.now(),
         results=results,
     )
+    rows = [(r.status.value, r.error_code or "none") for r in results]
     db.add(run)
     await db.commit()
-    return run.id
+    return run.id, status, rows
 
 
 async def _save_instruments(
@@ -289,6 +395,7 @@ async def _save_snapshots(db: AsyncSession, markets: dict[str, _Market]) -> None
                 **key,
                 retrieved_at=new.retrieved_at,
                 currency=new.currency,
+                settlement_currency=new.settlement_currency,
                 nominal=new.nominal,
                 price_pct=new.price_pct,
                 accrued_interest=new.accrued_interest,
@@ -402,7 +509,7 @@ async def get_calculation(
         select(CalculationResult)
         .outerjoin(Trade, Trade.id == CalculationResult.trade_id)
         .where(CalculationResult.run_id == run_id)
-        .options(selectinload(CalculationResult.snapshot))
+        .options(selectinload(CalculationResult.snapshot), selectinload(CalculationResult.fx_rate))
         .execution_options(populate_existing=True)
         .order_by(Trade.created_at.asc().nulls_last(), CalculationResult.input_isin)
     )

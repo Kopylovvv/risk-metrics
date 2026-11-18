@@ -1,4 +1,4 @@
-"""Настройки из окружения: адрес PostgreSQL, разрешённые Origin, cookie сессии"""
+"""Настройки из окружения: адрес PostgreSQL, разрешённые Origin, cookie сессии, источники"""
 
 import os
 from pathlib import Path
@@ -30,7 +30,8 @@ def database_url() -> URL:
         drivername="postgresql+psycopg",
         username=os.getenv("POSTGRES_USER", "risk_metrics"),
         password=os.getenv("POSTGRES_PASSWORD"),
-        host=os.getenv("POSTGRES_HOST", "localhost"),
+        # не localhost: на Windows он сначала идёт в IPv6, а compose слушает только IPv4
+        host=os.getenv("POSTGRES_HOST", "127.0.0.1"),
         port=int(os.getenv("POSTGRES_PORT", "5433")),  # порт, проброшенный в compose.yaml
         database=os.getenv("POSTGRES_DB", "risk_metrics"),
     )
@@ -46,6 +47,32 @@ def allowed_origins() -> list[str]:
     load_env_file()
     raw = os.getenv("ALLOWED_ORIGINS", DEFAULT_ORIGINS)
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
+def log_level() -> str:
+    load_env_file()
+    return os.getenv("LOG_LEVEL", "INFO").upper()
+
+
+def external_sources_enabled() -> bool:
+    """Ходить ли за данными в Мосбиржу и ЦБ. По умолчанию да
+
+    EXTERNAL_SOURCES=off: расчёт берёт данные только из БД (тесты, работа без сети)
+    """
+    load_env_file()
+    return os.getenv("EXTERNAL_SOURCES", "on").strip().lower() not in ("off", "0", "false")
+
+
+CBONDS_DEFAULT_URL = "https://ws2.cbonds.info/services/json/"
+
+
+def cbonds_credentials() -> tuple[str, str, str] | None:
+    """Логин, пароль и адрес web-сервиса Cbonds; None без доступа. В расчёте не используется"""
+    load_env_file()
+    login, password = os.getenv("CBONDS_LOGIN", ""), os.getenv("CBONDS_PASSWORD", "")
+    if not login or not password:
+        return None
+    return login, password, os.getenv("CBONDS_URL") or CBONDS_DEFAULT_URL
 
 
 def cookie_secure() -> bool:

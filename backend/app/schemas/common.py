@@ -90,6 +90,9 @@ class ErrorOut(BaseModel):
     code: str = Field(description="Машинный код ошибки", examples=["REVISION_CONFLICT"])
     message: str = Field(description="Сообщение для пользователя")
     details: list[ErrorDetail] = Field(default_factory=list)
+    request_id: str | None = Field(
+        None, description="Идентификатор запроса, тот же, что в заголовке X-Request-ID и в логах"
+    )
 
     model_config = {
         "json_schema_extra": {

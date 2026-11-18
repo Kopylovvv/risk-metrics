@@ -246,7 +246,7 @@ def test_enums_reject_unknown_values(session: Session):
     expect_violation(
         session,
         sql="INSERT INTO market_data_snapshots (id, instrument_id, provider, data_as_of,"
-        " retrieved_at, currency, coupon_type) VALUES (gen_random_uuid(), :i, 'moex',"
+        " retrieved_at, currency, coupon_type) VALUES (gen_random_uuid(), :i, 'bloomberg',"
         " :d, now(), 'RUB', 'fixed')",
         params={"i": ins.id, "d": DAY},
     )

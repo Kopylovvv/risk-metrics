@@ -19,7 +19,7 @@ TABLES = {
     "calculation_results",
 }
 ENUMS = {
-    "provider": ["cbonds", "rudata", "test"],
+    "provider": ["moex", "cbonds", "rudata", "test"],
     "coupon_type": ["fixed", "floating", "zero"],
     "run_status": ["success", "partial", "failed"],
     "row_status": ["success", "failed"],
