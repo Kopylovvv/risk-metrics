@@ -1,5 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 
+if (process.env.E2E_SEEDED_DEMO !== '1') {
+  throw new Error('Run these seeded-data tests through python scripts/check_compose.py --e2e');
+}
+
 export default defineConfig({
   testDir: './tests/e2e',
   timeout: 30_000,

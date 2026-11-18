@@ -21,7 +21,9 @@ def main():
     parser.add_argument("--db-port", type=int, default=15433)
     parser.add_argument("--frontend-port", type=int, default=18080)
     parser.add_argument(
-        "--keep", action="store_true", help="Оставить временное окружение для проверки браузером"
+        "--keep",
+        action="store_true",
+        help="Оставить временное окружение для проверки браузером",
     )
     parser.add_argument(
         "--e2e",
@@ -41,9 +43,7 @@ def main():
         FRONTEND_PORT=str(args.frontend_port),
         COOKIE_SECURE="false",
         ALLOWED_ORIGINS=f"http://127.0.0.1:{args.backend_port}",
-        CBONDS_LOGIN="",
-        CBONDS_PASSWORD="",
-        CBONDS_URL="",
+        EXTERNAL_SOURCES="off",
     )
     cookies = http.cookiejar.CookieJar()
     client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
@@ -74,7 +74,9 @@ def main():
         ]
 
         def compose(*arguments, check=True):
-            return subprocess.run(command + list(arguments), cwd=root, env=env, check=check)
+            return subprocess.run(
+                command + list(arguments), cwd=root, env=env, check=check
+            )
 
         def expected_error(path, code, body=None, csrf=None):
             try:
@@ -124,14 +126,18 @@ def main():
             )
             assert saved["trades"][0]["quantity"] == 17
             print(
-                "OK: API через Nginx, Origin, CSRF, сессия и запись сделки в PostgreSQL", flush=True
+                "OK: API через Nginx, Origin, CSRF, сессия и запись сделки в PostgreSQL",
+                flush=True,
             )
 
             if args.e2e:
-                print("E2E: наполнение базы контролируемыми демо-данными...", flush=True)
+                print(
+                    "E2E: наполнение базы контролируемыми демо-данными...", flush=True
+                )
                 compose("exec", "-T", "backend", "python", "-m", "app.stubs.demo_data")
                 playwright_env = os.environ.copy()
                 playwright_env["BASE_URL"] = base
+                playwright_env["E2E_SEEDED_DEMO"] = "1"
                 cmd = ["npx", "playwright", "test"]
                 if sys.platform == "win32":
                     cmd[0] = "npx.cmd"
@@ -148,7 +154,9 @@ def main():
                 print("OK: браузерный сценарий (E2E) успешно проверен", flush=True)
 
             # Frontend остаётся работающим при пересоздании backend.
-            compose("up", "--detach", "--no-deps", "--force-recreate", "--wait", "backend")
+            compose(
+                "up", "--detach", "--no-deps", "--force-recreate", "--wait", "backend"
+            )
             deadline = time.monotonic() + 20
             while True:
                 try:
@@ -163,7 +171,9 @@ def main():
             compose("down")
             compose("up", "--detach", "--wait", "--wait-timeout", "120")
             restored = request(path)
-            assert restored == saved, "Сохранённая сделка изменилась после пересоздания контейнеров"
+            assert restored == saved, (
+                "Сохранённая сделка изменилась после пересоздания контейнеров"
+            )
             print("OK: данные и сессия сохранились после down/up", flush=True)
 
             compose("stop", "db")
@@ -194,7 +204,9 @@ def main():
                 env=env,
                 text=True,
             ).strip()
-            assert exit_code == "23", "Должна сработать именно контрольная ошибка миграции"
+            assert exit_code == "23", (
+                "Должна сработать именно контрольная ошибка миграции"
+            )
             running = subprocess.check_output(
                 command + ["ps", "--status", "running", "--services"],
                 cwd=root,

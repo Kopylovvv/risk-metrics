@@ -1,0 +1,11 @@
+OK: HTTPS HTML and built assets load
+OK: Secure HttpOnly SameSite=Lax session; two independent workspaces
+DATA: RU000A1038V6 MOEX 2026-11-13 DV01 -31.56413656263376723230122382 FX None None
+DATA: RU000A105A95 MOEX 2026-11-13 DV01 415.0454914182794933305595135 FX cbr 2026-11-13
+TOTAL: 383.4813548556457260982582897
+OK: Live MOEX + CBR on 2026-11-13 match recorded control within 1e-9 RUB
+OK: Isolation 404, missing CSRF 403, stale revision 409
+OK: Unknown instrument produces row error and null total, not zero
+OK: Create/update/delete/reload work; saved historical calculation is unchanged
+OK: Public frontend does not proxy internal Prometheus metrics
+PASS: live HTTPS integration acceptance

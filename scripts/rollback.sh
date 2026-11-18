@@ -9,6 +9,11 @@ backup_dir=$(realpath "$1")
 cd /home/teahorses/risk-metrics
 exec 9>.git/deploy.lock
 flock -w 900 9
+target_sha=$(cat "$backup_dir/target-sha")
+if [[ ! $target_sha =~ ^[0-9a-f]{40}$ || $(git rev-parse HEAD) != "$target_sha" ]]; then
+    echo "Backup belongs to a different release; refusing a stale rollback." >&2
+    exit 1
+fi
 current_schema=$(sudo -n docker compose exec -T db sh -c 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT version_num FROM alembic_version"')
 if [[ $current_schema != "$(cat "$backup_dir/schema-before")" ]]; then
     echo "Database schema changed. Review migration compatibility and restore plan first." >&2

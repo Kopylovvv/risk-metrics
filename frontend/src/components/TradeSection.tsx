@@ -46,8 +46,10 @@ export default function TradeSection({
   const latestQueryRef = useRef('');
 
   async function resolveInstrument(code: string): Promise<Instrument | null> {
+    latestQueryRef.current = '';
     const vRes = validateIsin(code);
     if (!vRes.valid) {
+      setLoadingInstrument(false);
       setIsinError(vRes.error || 'Неверный ISIN');
       setCurrentInstrument(null);
       return null;
