@@ -1,0 +1,24 @@
+groups:
+  - name: risk-metrics
+    rules:
+      - alert: BackendUnavailable
+        expr: up{job="risk-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Backend metrics are unavailable
+      - alert: BackendNotReady
+        expr: probe_success{job="risk-health", instance="http://backend:8000/health/ready"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Backend or database is not ready
+      - alert: SustainedServerErrors
+        expr: sum(rate(risk_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(risk_http_requests_total[5m])), 0.001) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than five percent of requests fail with 5xx

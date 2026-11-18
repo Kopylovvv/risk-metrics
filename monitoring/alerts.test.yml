@@ -1,0 +1,55 @@
+rule_files:
+  - alerts.yml
+evaluation_interval: 15s
+tests:
+  - interval: 15s
+    input_series:
+      - series: 'up{job="risk-backend",instance="backend:8000"}'
+        values: '1 0 0 0 0 0 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 75s
+        alertname: BackendUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: risk-backend
+              instance: backend:8000
+            exp_annotations:
+              summary: Backend metrics are unavailable
+      - eval_time: 90s
+        alertname: BackendUnavailable
+        exp_alerts: []
+  - interval: 15s
+    input_series:
+      - series: 'probe_success{job="risk-health",instance="http://backend:8000/health/ready"}'
+        values: '1 0 0 0 0 0 1 1'
+    alert_rule_test:
+      - eval_time: 75s
+        alertname: BackendNotReady
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: risk-health
+              instance: http://backend:8000/health/ready
+            exp_annotations:
+              summary: Backend or database is not ready
+      - eval_time: 90s
+        alertname: BackendNotReady
+        exp_alerts: []
+  - interval: 15s
+    input_series:
+      - series: 'risk_http_requests_total{status="500"}'
+        values: '0+10x12 120+0x30'
+      - series: 'risk_http_requests_total{status="200"}'
+        values: '0+10x42'
+    alert_rule_test:
+      - eval_time: 180s
+        alertname: SustainedServerErrors
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: More than five percent of requests fail with 5xx
+      - eval_time: 630s
+        alertname: SustainedServerErrors
+        exp_alerts: []

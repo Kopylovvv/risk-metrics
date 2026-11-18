@@ -6,15 +6,24 @@ on:
     types: ["completed"]
     branches: ["main"]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: risk-metrics-staging
+  cancel-in-progress: false
+
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     if: github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push'
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.event.workflow_run.head_sha }}
       - name: Get github sha
@@ -29,8 +38,11 @@ jobs:
           umask 077
           printf '%s\n' "$SSH_PRIVATE_KEY" > "$RUNNER_TEMP/deploy-key"
           printf '%s\n' "$SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/deploy-known-hosts"
-      - name: check ssh auth
+      - name: Deploy the tested commit
+        env:
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
           ssh \
           -i "$RUNNER_TEMP/deploy-key" \
           -o "UserKnownHostsFile=$RUNNER_TEMP/deploy-known-hosts" \
@@ -38,4 +50,7 @@ jobs:
           -o "IdentitiesOnly=yes" \
           -o "StrictHostKeyChecking=yes" \
           teahorses@158.160.170.45 \
-          'whoami; hostname'
+          "bash -s -- $TARGET_SHA" < scripts/deploy.sh
+      - name: Remove SSH material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/deploy-key" "$RUNNER_TEMP/deploy-known-hosts"

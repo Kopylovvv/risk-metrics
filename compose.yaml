@@ -2,6 +2,8 @@ name: risk-metrics
 
 x-backend: &backend
   build: ./backend
+  labels:
+    org.opencontainers.image.revision: ${APP_REVISION:-local}
   environment:
     POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
     POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
@@ -11,9 +13,6 @@ x-backend: &backend
     ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000},http://localhost:${FRONTEND_PORT:-8080},http://127.0.0.1:${FRONTEND_PORT:-8080}
     COOKIE_SECURE: ${COOKIE_SECURE:-false}
     EXTERNAL_SOURCES: ${EXTERNAL_SOURCES:-on}
-    CBONDS_LOGIN: ${CBONDS_LOGIN:-}
-    CBONDS_PASSWORD: ${CBONDS_PASSWORD:-}
-    CBONDS_URL: ${CBONDS_URL:-}
 
 services:
   db:
@@ -69,6 +68,8 @@ services:
 
   frontend:
     build: ./frontend
+    labels:
+      org.opencontainers.image.revision: ${APP_REVISION:-local}
     depends_on:
       backend:
         condition: service_healthy
