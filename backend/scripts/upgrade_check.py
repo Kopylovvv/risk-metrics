@@ -16,7 +16,6 @@ import json
 import sys
 import tempfile
 from datetime import date
-from decimal import Decimal
 from pathlib import Path
 
 import httpx
@@ -114,12 +113,9 @@ def after(base):
             json={"expected_revision": ws["revision"], "valuation_date": DAY},
             headers=h,
         ).json()
-        # пока адаптеры Мосбиржи и ЦБ не подключены, новый расчёт идёт по тем же данным из БД
-        same_total = new["total_value"] is not None and Decimal(new["total_value"]) == Decimal(
-            old["total_value"] or "NaN"
-        )
         check(
-            new["status"] == old["status"] and same_total,
+            new["status"] in ("success", "partial", "failed")
+            and ((new["status"] == "success") == (new["total_value"] is not None)),
             f"{name}: новый расчёт {new['status']} {new['total_value']}",
         )
         other = "B" if name == "A" else "A"

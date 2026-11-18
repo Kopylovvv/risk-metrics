@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: Risk metrics
+    folder: Risk metrics
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards
