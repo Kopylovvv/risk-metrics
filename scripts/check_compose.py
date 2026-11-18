@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import secrets
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
@@ -21,6 +22,11 @@ def main():
     parser.add_argument("--frontend-port", type=int, default=18080)
     parser.add_argument(
         "--keep", action="store_true", help="Оставить временное окружение для проверки браузером"
+    )
+    parser.add_argument(
+        "--e2e",
+        action="store_true",
+        help="Запустить браузерный E2E-тест Playwright с контролируемыми данными",
     )
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
@@ -120,6 +126,26 @@ def main():
             print(
                 "OK: API через Nginx, Origin, CSRF, сессия и запись сделки в PostgreSQL", flush=True
             )
+
+            if args.e2e:
+                print("E2E: наполнение базы контролируемыми демо-данными...", flush=True)
+                compose("exec", "-T", "backend", "python", "-m", "app.stubs.demo_data")
+                playwright_env = os.environ.copy()
+                playwright_env["BASE_URL"] = base
+                cmd = ["npx", "playwright", "test"]
+                if sys.platform == "win32":
+                    cmd[0] = "npx.cmd"
+                print(
+                    f"E2E: запуск Playwright браузерного сценария по адресу {base}...",
+                    flush=True,
+                )
+                subprocess.run(
+                    cmd,
+                    cwd=root / "frontend",
+                    env=playwright_env,
+                    check=True,
+                )
+                print("OK: браузерный сценарий (E2E) успешно проверен", flush=True)
 
             # Frontend остаётся работающим при пересоздании backend.
             compose("up", "--detach", "--no-deps", "--force-recreate", "--wait", "backend")

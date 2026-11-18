@@ -2,13 +2,34 @@ import type { CalculationResult, CalculationRow } from '@/types/api';
 import { rowErrorText } from '@/utils/helpers';
 
 // Откуда данные строки: источник и дата котировки, для валютной бумаги ещё курс
-function rowSource(row: CalculationRow): string | null {
+interface RowSourceInfo {
+  text: string;
+  isTest: boolean;
+}
+
+function rowSource(row: CalculationRow): RowSourceInfo | null {
   if (!row.provider && !row.dataAsOf) return null;
-  const quote = [row.provider, row.dataAsOf && `от ${row.dataAsOf}`].filter(Boolean).join(' ');
-  if (!row.fxSource || !row.fxRateUsed) return quote;
+  const isTest = row.provider === 'test' || row.fxSource === 'demo';
+  const providerLabel =
+    row.provider === 'test'
+      ? 'TEST (демо-данные)'
+      : row.provider === 'moex'
+        ? 'Мосбиржа'
+        : row.provider;
+  const quote = [providerLabel, row.dataAsOf && `от ${row.dataAsOf}`].filter(Boolean).join(' ');
+  if (!row.fxSource || !row.fxRateUsed) return { text: quote, isTest };
   const rate = Number(row.fxRateUsed).toLocaleString('ru-RU', { maximumFractionDigits: 6 });
   const fxDate = row.fxRateDate ? ` от ${row.fxRateDate}` : '';
-  return `${quote}; курс ${row.currency} ${rate} (${row.fxSource}${fxDate})`;
+  const fxLabel =
+    row.fxSource === 'demo'
+      ? 'DEMO'
+      : row.fxSource === 'cbr'
+        ? 'ЦБ РФ'
+        : row.fxSource;
+  return {
+    text: `${quote}; курс ${row.currency} ${rate} (${fxLabel}${fxDate})`,
+    isTest,
+  };
 }
 
 interface ResultsPanelProps {
@@ -37,6 +58,10 @@ export default function ResultsPanel({
   const failedCount = result
     ? result.results.filter((r) => r.status === 'failed').length
     : 0;
+
+  const hasTestData = Boolean(
+    result?.results.some((r) => r.provider === 'test' || r.fxSource === 'demo'),
+  );
 
   const statusLabel =
     result?.status === 'success'
@@ -146,6 +171,22 @@ export default function ResultsPanel({
                 </div>
               )}
 
+              {hasTestData && (
+                <div
+                  id="test-data-notice"
+                  className="flex items-center gap-2 text-[11px] text-amber-300 bg-amber-950/40 border border-amber-500/40 rounded-lg p-2.5"
+                >
+                  <svg className="w-4 h-4 shrink-0 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  <span>
+                    Внимание: в расчёте присутствуют демонстрационные (TEST/DEMO) данные. Они не отражают актуальный рынок.
+                  </span>
+                </div>
+              )}
+
               {isStale && (
                 <div
                   id="portfolio-stale-warning"
@@ -191,11 +232,19 @@ export default function ResultsPanel({
                         <tr key={row.tradeId ?? idx} className="hover:bg-[#0c1220]">
                           <td className="px-3 py-2 font-mono text-slate-200">
                             <span>{row.isin}</span>
-                            {rowSource(row) && (
-                              <span className="block text-[10px] text-slate-500 font-mono">
-                                {rowSource(row)}
-                              </span>
-                            )}
+                            {(() => {
+                              const src = rowSource(row);
+                              if (!src) return null;
+                              return (
+                                <span
+                                  className={`block text-[10px] font-mono mt-0.5 ${
+                                    src.isTest ? 'text-amber-400 font-medium' : 'text-slate-400'
+                                  }`}
+                                >
+                                  {src.text}
+                                </span>
+                              );
+                            })()}
                           </td>
                           <td className={`px-3 py-2 text-right font-mono ${row.quantity < 0 ? 'text-red-400' : 'text-slate-200'}`}>
                             {row.quantity.toLocaleString('ru-RU')}
