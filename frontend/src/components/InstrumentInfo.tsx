@@ -116,9 +116,19 @@ export default function InstrumentInfo({ instrument }: InstrumentInfoProps) {
 
         <div>
           <span className="block text-[11px] text-slate-400 mb-1">Источник данных</span>
-          <span className="font-mono text-[14px] font-medium text-white tracking-wide uppercase">
-            {instrument.provider ?? '—'}
-          </span>
+          {instrument.provider === 'test' ? (
+            <span className="inline-flex items-center gap-1 font-mono text-[12px] font-semibold text-amber-300 bg-amber-950/40 border border-amber-500/40 px-2 py-0.5 rounded">
+              TEST (тестовый, не рынок)
+            </span>
+          ) : instrument.provider === 'moex' ? (
+            <span className="font-mono text-[14px] font-medium text-emerald-400 tracking-wide">
+              MOEX (Московская биржа)
+            </span>
+          ) : (
+            <span className="font-mono text-[14px] font-medium text-white tracking-wide uppercase">
+              {instrument.provider ?? '—'}
+            </span>
+          )}
         </div>
 
         <div>
@@ -145,6 +155,19 @@ export default function InstrumentInfo({ instrument }: InstrumentInfoProps) {
           </svg>
           <span>
             Тип купона Floating: Duration устанавливается как 1/количество выплат, Convexity = 0.
+          </span>
+        </div>
+      )}
+
+      {instrument.currency !== 'RUB' && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-slate-700/60 bg-[#0e1626] px-3.5 py-2.5 text-[12px] text-slate-300">
+          <svg className="w-4 h-4 shrink-0 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="16" x2="12" y2="12" />
+            <line x1="12" y1="8" x2="12.01" y2="8" />
+          </svg>
+          <span>
+            Валюта номинала {instrument.currency}: при расчёте CFV и DV01 пересчитываются в рубли (RUB) по официальному курсу ЦБ РФ на дату оценки.
           </span>
         </div>
       )}

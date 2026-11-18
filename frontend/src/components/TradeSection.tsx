@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import type { Trade, Instrument } from '@/types/api';
 import { fetchInstrument, getErrorMessage, extractApiError } from '@/api/client';
 import { validateIsin, validateQuantity, formatNumber } from '@/utils/helpers';
@@ -43,18 +43,25 @@ export default function TradeSection({
   const [editQuantityValue, setEditQuantityValue] = useState<string>('');
   const [editError, setEditError] = useState<string | null>(null);
 
+  const latestQueryRef = useRef('');
+
   async function resolveInstrument(code: string): Promise<Instrument | null> {
+    latestQueryRef.current = '';
     const vRes = validateIsin(code);
     if (!vRes.valid) {
+      setLoadingInstrument(false);
       setIsinError(vRes.error || 'Неверный ISIN');
       setCurrentInstrument(null);
       return null;
     }
 
+    const query = vRes.normalized;
+    latestQueryRef.current = query;
     setLoadingInstrument(true);
     setIsinError(null);
     try {
-      const found = await fetchInstrument(vRes.normalized);
+      const found = await fetchInstrument(query);
+      if (latestQueryRef.current !== query) return null;
       if (found) {
         setCurrentInstrument(found);
         onSelectInstrument(found);
@@ -63,11 +70,14 @@ export default function TradeSection({
       }
       return found;
     } catch (err) {
+      if (latestQueryRef.current !== query) return null;
       setIsinError(getErrorMessage(err));
       setCurrentInstrument(null);
       return null;
     } finally {
-      setLoadingInstrument(false);
+      if (latestQueryRef.current === query) {
+        setLoadingInstrument(false);
+      }
     }
   }
 
@@ -79,6 +89,7 @@ export default function TradeSection({
 
   async function handleAddSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (mutating) return;
 
     const isinRes = validateIsin(isin);
     if (!isinRes.valid) {
@@ -119,6 +130,7 @@ export default function TradeSection({
   }
 
   async function saveEditing(id: string) {
+    if (mutating) return;
     const qRes = validateQuantity(editQuantityValue);
     if (!qRes.valid || qRes.value === undefined) {
       setEditError(qRes.error || 'Неверное количество бумаг');
@@ -167,6 +179,7 @@ export default function TradeSection({
           <button
             type="button"
             id="fill-sample-btn"
+            disabled={mutating}
             onClick={() => {
               setIsin('RU000A1038V6');
               setQuantity('100');
@@ -190,6 +203,7 @@ export default function TradeSection({
               <div className="relative">
                 <input
                   id="isin-input"
+                  disabled={mutating}
                   type="text"
                   maxLength={12}
                   value={isin}
@@ -224,6 +238,7 @@ export default function TradeSection({
               </label>
               <input
                 id="quantity-input"
+                disabled={mutating}
                 type="number"
                 step={1}
                 value={quantity}
@@ -346,6 +361,7 @@ export default function TradeSection({
                               type="number"
                               step={1}
                               value={editQuantityValue}
+                              disabled={mutating}
                               onChange={(e) => setEditQuantityValue(e.target.value)}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') saveEditing(trade.id);
