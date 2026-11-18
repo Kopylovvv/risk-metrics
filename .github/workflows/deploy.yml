@@ -43,14 +43,21 @@ jobs:
           TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
-          ssh \
-          -i "$RUNNER_TEMP/deploy-key" \
-          -o "UserKnownHostsFile=$RUNNER_TEMP/deploy-known-hosts" \
-          -o "BatchMode=yes" \
-          -o "IdentitiesOnly=yes" \
-          -o "StrictHostKeyChecking=yes" \
-          teahorses@158.160.170.45 \
-          "bash -s -- $TARGET_SHA" < scripts/deploy.sh
+          ssh_args=(
+            -i "$RUNNER_TEMP/deploy-key"
+            -o "UserKnownHostsFile=$RUNNER_TEMP/deploy-known-hosts"
+            -o "BatchMode=yes"
+            -o "IdentitiesOnly=yes"
+            -o "StrictHostKeyChecking=yes"
+            teahorses@158.160.170.45
+          )
+          # Compose exec may read stdin. Finish receiving the script before running it.
+          ssh "${ssh_args[@]}" \
+            "set -eu; f=\$(mktemp); trap 'rm -f \"\$f\"' EXIT; cat > \"\$f\"; bash \"\$f\" '$TARGET_SHA' </dev/null" \
+            < scripts/deploy.sh
+          # Verify the release independently of the script's exit status.
+          ssh "${ssh_args[@]}" \
+            "test \"\$(cat /home/teahorses/risk-metrics/.git/deployed-sha)\" = '$TARGET_SHA' && test \"\$(git -C /home/teahorses/risk-metrics rev-parse HEAD)\" = '$TARGET_SHA' && curl -fsS http://127.0.0.1:8080/health/ready"
       - name: Remove SSH material
         if: always()
         run: rm -f "$RUNNER_TEMP/deploy-key" "$RUNNER_TEMP/deploy-known-hosts"
