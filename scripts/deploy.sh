@@ -81,7 +81,13 @@ trap - EXIT
 (umask 022; git checkout --detach "$target_sha")
 python3 scripts/prepare_checkout.py
 if ! compose build backend migrate frontend; then
-    git checkout --detach "$previous_sha"
+    (umask 022; git checkout --detach "$previous_sha")
+    exit 1
+fi
+# Apply migrations before replacing healthy application containers.
+if ! compose run --rm -T --no-deps migrate; then
+    echo "Migration failed; existing application containers were not replaced. Backup: $backup_dir" >&2
+    (umask 022; git checkout --detach "$previous_sha")
     exit 1
 fi
 if ! compose up -d --no-build --wait --wait-timeout 180; then
@@ -95,6 +101,10 @@ for service in backend frontend; do
     installed=$(sudo -n docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$container")
     [[ $installed == "$target_sha" ]]
 done
+if [[ -f compose.monitoring.yaml && -f .monitoring.env ]]; then
+    curl --fail --silent --show-error --retry 15 --retry-connrefused --retry-delay 2 http://127.0.0.1:9090/-/ready
+    curl --fail --silent --show-error --retry 15 --retry-connrefused --retry-delay 2 http://127.0.0.1:3000/api/health
+fi
 cmp .env "$backup_dir/environment"
 printf '%s\n' "$target_sha" > .git/deployed-sha
 printf '%s\n' "$backup_dir" > .git/last-deploy-backup
