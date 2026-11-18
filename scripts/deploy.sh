@@ -106,8 +106,8 @@ for service in backend frontend; do
     [[ $installed == "$target_sha" ]]
 done
 if [[ -f compose.monitoring.yaml && -f .monitoring.env ]]; then
-    curl --fail --silent --show-error --retry 15 --retry-connrefused --retry-delay 2 http://127.0.0.1:9090/-/ready
-    curl --fail --silent --show-error --retry 15 --retry-connrefused --retry-delay 2 http://127.0.0.1:3000/api/health
+    curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-connrefused --retry-delay 2 http://127.0.0.1:9090/-/ready
+    curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-connrefused --retry-delay 2 http://127.0.0.1:3000/api/health
 fi
 cmp .env "$backup_dir/environment"
 printf '%s\n' "$target_sha" > .git/deployed-sha
