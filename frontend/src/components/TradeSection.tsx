@@ -179,6 +179,7 @@ export default function TradeSection({
           <button
             type="button"
             id="fill-sample-btn"
+            disabled={mutating}
             onClick={() => {
               setIsin('RU000A1038V6');
               setQuantity('100');
@@ -202,6 +203,7 @@ export default function TradeSection({
               <div className="relative">
                 <input
                   id="isin-input"
+                  disabled={mutating}
                   type="text"
                   maxLength={12}
                   value={isin}
@@ -236,6 +238,7 @@ export default function TradeSection({
               </label>
               <input
                 id="quantity-input"
+                disabled={mutating}
                 type="number"
                 step={1}
                 value={quantity}
@@ -358,6 +361,7 @@ export default function TradeSection({
                               type="number"
                               step={1}
                               value={editQuantityValue}
+                              disabled={mutating}
                               onChange={(e) => setEditQuantityValue(e.target.value)}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') saveEditing(trade.id);
