@@ -90,6 +90,10 @@ if ! compose run --rm -T --no-deps migrate; then
     (umask 022; git checkout --detach "$previous_sha")
     exit 1
 fi
+if [[ -f compose.monitoring.yaml && -f .monitoring.env ]]; then
+    # Recreate file bind mounts after Git replaces config files (new inodes).
+    compose up -d --no-build --no-deps --force-recreate prometheus blackbox grafana
+fi
 if ! compose up -d --no-build --wait --wait-timeout 180; then
     echo "Deployment failed. Backup: $backup_dir" >&2
     compose logs --no-color --tail=40 migrate backend >&2 || true
