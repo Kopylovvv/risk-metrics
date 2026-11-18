@@ -47,14 +47,18 @@ compose() {
 # Retain the exact previous images for a code rollback without rebuilding dependencies.
 sudo -n docker inspect risk-metrics-backend-1 risk-metrics-frontend-1 > "$backup_dir/containers.json"
 python3 - "$backup_dir" <<'PY_IMAGES'
-import json,sys
+import json,sys,subprocess
 from pathlib import Path
 p=Path(sys.argv[1]); containers=json.loads((p/'containers.json').read_text())
 services={}
 for c in containers:
     name=c['Config']['Labels']['com.docker.compose.service']
-    services[name]={'image':c['Image']}
-    if name=='backend': services['migrate']={'image':c['Image']}
+    # Pin the image reference before rebuilding its mutable Compose tag.
+    # Docker's container .Image may be a config digest rather than an inspectable image ID.
+    pin=f'risk-metrics-rollback/{name}:{p.name}'
+    subprocess.run(['sudo','-n','docker','tag',c['Config']['Image'],pin],check=True)
+    services[name]={'image':pin,'pull_policy':'never'}
+    if name=='backend': services['migrate']={'image':pin,'pull_policy':'never'}
 (p/'rollback-images.json').write_text(json.dumps({'services':services}))
 PY_IMAGES
 compose exec -T db sh -c 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec pg_dump -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$backup_dir/database.dump"
