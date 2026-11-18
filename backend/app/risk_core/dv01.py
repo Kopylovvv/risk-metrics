@@ -50,6 +50,7 @@ def calc_dv01(data: Dv01Input) -> Dv01Result:
     return Dv01Result(
         current_fair_value=cfv, duration_used=duration, convexity_used=convexity, dv01=dv01
     )
+    
 
 
 def _duration_and_convexity(data: Dv01Input) -> tuple[Decimal, Decimal]:
