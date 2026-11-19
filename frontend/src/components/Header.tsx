@@ -13,7 +13,10 @@ export default function Header() {
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+              {/* сдвиг кривой доходности на 1 bp: то, что измеряет DV01 */}
+              <path d="M3 3v18h18" />
+              <path d="M6 18c2.5-4.5 6-7.5 14-9" strokeDasharray="2.2 2.4" opacity="0.55" />
+              <path d="M6 14c2.5-4.5 6-7.5 14-9" />
             </svg>
           </div>
           <div>
