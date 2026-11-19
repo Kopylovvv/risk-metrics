@@ -77,7 +77,7 @@ psycopg в async-режиме не работает, и `/health/ready` отве
 | GET | `/api/v1/workspaces/{id}/calculations?limit=&offset=` | история расчётов набора, новые сверху |
 | POST | `/api/v1/workspaces/{id}/restore` | взять прошлый расчёт за основу `{calculation_id, expected_revision}` |
 | GET | `/metrics` | метрики Prometheus, только внутри сети (см. `docs/monitoring.md`) |
-| GET | `/api/v1/calculations/{id}/source-diff?as_of=` | сохранённые снимок и курс рядом с новым ответом источника |
+| GET | `/api/v1/calculations/{id}/source-diff?as_of=` | сравнение расчёта с данными на сегодня: данные и DV01 было/стало |
 | GET | `/api/v1/instruments/{isin}` | карточка облигации из БД |
 | GET | `/health/live`, `/health/ready` | процесс жив / база доступна |
 
@@ -194,7 +194,10 @@ CFV = количество × (номинал × цена/100 + НКД) × ку�
 (по умолчанию сегодня). По каждой бумаге `saved` и `saved_fx` (по чему считали),
 `current` и `current_fx` (что источник отвечает сейчас), `changed` (отличающиеся поля,
 курс с префиксом `fx_`). Источник не ответил: справа последнее сохранённое в БД
-(`current_origin = db`) и код в `current_error`. Ответ ничего не записывает
+(`current_origin = db`) и код в `current_error`. DV01 того же количества по старым и новым
+данным: `saved_dv01`, `current_dv01`, `dv01_change`; если посчитать нельзя, причина в
+`current_dv01_error`. По всему составу: `saved_total`, `current_total`, `total_change`.
+Ответ ничего не записывает
 
 ### Для фронта (Егор)
 
@@ -216,8 +219,9 @@ CFV = количество × (номинал × цена/100 + НКД) × ку�
   сохранённые данные; показать предупреждение с датой (`data_as_of` / `fx_rate_date`)
 - у ошибок есть `request_id` (он же в заголовке `X-Request-ID`): его можно показать
   пользователю вместе с сообщением, по нему ищется запрос в логах
-- `GET /api/v1/calculations/{id}/source-diff`: сохранённые данные расчёта рядом с новым
-  ответом источника, список `changed` можно подсветить
+- «сравнить с данными сегодня»: `GET /api/v1/calculations/{id}/source-diff` отдаёт по каждой
+  бумаге `saved_dv01`, `current_dv01`, `dv01_change` и итог `saved_total`, `current_total`,
+  `total_change`; список `changed` (цена, НКД, курс) можно подсветить. Ничего не сохраняет
 
 ## Настройки (переменные окружения или `.env` в корне)
 

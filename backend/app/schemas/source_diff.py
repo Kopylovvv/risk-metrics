@@ -57,12 +57,33 @@ class SourceDiffRow(BaseModel):
         description="Поля, которые отличаются; курс с префиксом fx_ (fx_rate_to_rub). "
         "Время получения retrieved_at не сравнивается"
     )
+    quantity: int = Field(description="Количество бумаг этого ISIN в расчёте")
+    saved_dv01: DecimalStr | None = Field(
+        None, description="DV01 по сохранённым данным, RUB; null, если строка расчёта с ошибкой"
+    )
+    current_dv01: DecimalStr | None = Field(
+        None, description="DV01 по данным current и current_fx, RUB; null, если посчитать нельзя"
+    )
+    current_dv01_error: RowErrorCode | None = Field(
+        None, description="Почему current_dv01 не посчитан"
+    )
+    dv01_change: DecimalStr | None = Field(
+        None, description="current_dv01 − saved_dv01; null, если одного из них нет"
+    )
 
 
 class SourceDiffOut(BaseModel):
     calculation_id: UUID
     valuation_date: date = Field(description="Дата оценки сохранённого расчёта")
     compared_as_of: date = Field(description="На какую дату запрошен новый ответ")
+    saved_total: DecimalStr | None = Field(
+        description="Итог DV01 сохранённого расчёта, RUB; null, если расчёт не полный"
+    )
+    current_total: DecimalStr | None = Field(
+        description="Итог DV01 того же состава по данным на compared_as_of; null, если "
+        "хотя бы одну бумагу посчитать нельзя"
+    )
+    total_change: DecimalStr | None = Field(description="current_total − saved_total")
     rows: list[SourceDiffRow]
 
     model_config = {
@@ -72,6 +93,9 @@ class SourceDiffOut(BaseModel):
                     "calculation_id": "7a1c2f0e-1b7d-4c55-9a43-0f3f2d1e9b10",
                     "valuation_date": "2026-10-12",
                     "compared_as_of": "2026-10-13",
+                    "saved_total": "415.0455",
+                    "current_total": "420.7731",
+                    "total_change": "5.7276",
                     "rows": [
                         {
                             "isin": "RU000A105A95",
@@ -124,6 +148,11 @@ class SourceDiffOut(BaseModel):
                                 "fx_rate_date",
                                 "fx_rate_to_rub",
                             ],
+                            "quantity": -10,
+                            "saved_dv01": "415.0455",
+                            "current_dv01": "420.7731",
+                            "current_dv01_error": None,
+                            "dv01_change": "5.7276",
                         }
                     ],
                 }

@@ -93,19 +93,26 @@ AsOf = Annotated[
 @router.get(
     "/api/v1/calculations/{calculation_id}/source-diff",
     response_model=SourceDiffOut,
-    summary="Сохранённые данные расчёта и новый ответ источника",
+    summary="Сравнить сохранённый расчёт с данными на сегодня",
     description=(
         "Для каждой бумаги: снимок и курс, по которым считали, рядом с тем, что источник "
         "отвечает сейчас на дату `as_of`. Если источник не ответил, справа последнее "
         "сохранённое в БД (`current_origin = db`). `changed` перечисляет отличающиеся поля. "
-        "Ничего не сохраняет: сохранённый расчёт не меняется"
+        "`saved_dv01` и `current_dv01`: DV01 того же количества по старым и новым данным, "
+        "`dv01_change` их разница; то же для итога (`saved_total`, `current_total`, "
+        "`total_change`). Ничего не сохраняет: сохранённый расчёт и история не меняются"
     ),
     responses=error_responses(401, 404, 422, 503),
 )
 async def source_diff(
-    run: OwnCalculation, db: Db, market: MarketData, fx: FxRates, as_of: AsOf = None
+    run: OwnCalculation,
+    db: Db,
+    market: MarketData,
+    fx: FxRates,
+    calc: RiskCalculator,
+    as_of: AsOf = None,
 ):
-    return await compare_with_source(db, run, as_of or date.today(), market, fx)
+    return await compare_with_source(db, run, as_of or date.today(), market, fx, calc)
 
 
 @router.get(

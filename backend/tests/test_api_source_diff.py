@@ -183,6 +183,96 @@ async def test_diff_checks_date_and_owner(api, sources):
     assert (await api.get(diff_url(str(uuid.uuid4())))).status_code == 404
 
 
+# --- DV01 на сегодня: «сравнить с данными сегодня» ----------------------------------------
+
+
+async def test_diff_gives_dv01_by_new_data_equal_to_real_recalculation(api, engine, sources):
+    market, fx = sources
+    ws_id, h, rev = await workspace_with(api, (NEW_BOND, 100), (USD_BOND, -10), (NEW_BOND, 5))
+    calc = (await calculate(api, ws_id, h, rev)).json()
+    market.price, market.accrued = Decimal("99.1"), Decimal("10.5")
+    fx.rate = Decimal("93.1")
+    saved_rows = (count(engine, "market_data_snapshots"), count(engine, "calculation_runs"))
+
+    body = (await api.get(diff_url(calc["id"], NEXT_DAY))).json()
+    rows = {row["isin"]: row for row in body["rows"]}
+    assert (count(engine, "market_data_snapshots"), count(engine, "calculation_runs")) == saved_rows
+
+    # тот же состав, посчитанный по-настоящему на следующий день в другом наборе
+    async with second_client() as other:
+        other_id, oh, orev = await workspace_with(
+            other, (NEW_BOND, 100), (USD_BOND, -10), (NEW_BOND, 5)
+        )
+        fresh = (await calculate(other, other_id, oh, orev, NEXT_DAY)).json()
+    assert fresh["status"] == "success"
+    fresh_by_isin: dict[str, Decimal] = {}
+    for row in fresh["results"]:
+        fresh_by_isin[row["isin"]] = fresh_by_isin.get(row["isin"], 0) + Decimal(
+            row["metric_value"]
+        )
+    saved_by_isin: dict[str, Decimal] = {}
+    for row in calc["results"]:
+        saved_by_isin[row["isin"]] = saved_by_isin.get(row["isin"], 0) + Decimal(
+            row["metric_value"]
+        )
+
+    for isin in (NEW_BOND, USD_BOND):
+        row = rows[isin]
+        assert Decimal(row["saved_dv01"]) == saved_by_isin[isin]
+        assert Decimal(row["current_dv01"]) == fresh_by_isin[isin]
+        assert Decimal(row["dv01_change"]) == fresh_by_isin[isin] - saved_by_isin[isin]
+        assert row["current_dv01_error"] is None
+    assert (rows[NEW_BOND]["quantity"], rows[USD_BOND]["quantity"]) == (105, -10)
+    assert Decimal(rows[USD_BOND]["dv01_change"]) != 0  # цена и курс изменились
+
+    assert Decimal(body["saved_total"]) == Decimal(calc["total_value"])
+    assert Decimal(body["current_total"]) == Decimal(fresh["total_value"])
+    assert Decimal(body["total_change"]) == Decimal(fresh["total_value"]) - Decimal(
+        calc["total_value"]
+    )
+    # старый расчёт и его история не изменились
+    assert (await api.get(f"/api/v1/calculations/{calc['id']}")).json() == calc
+
+
+async def test_same_data_gives_zero_change(api, sources):
+    ws_id, h, rev = await workspace_with(api, (USD_BOND, 3))
+    calc = (await calculate(api, ws_id, h, rev)).json()
+    body = (await api.get(diff_url(calc["id"], DAY))).json()
+    assert Decimal(body["total_change"]) == 0
+    assert body["current_total"] == body["saved_total"] == calc["total_value"]
+    assert Decimal(body["rows"][0]["dv01_change"]) == 0
+
+
+async def test_current_dv01_uses_saved_rate_when_fx_source_is_down(api, sources):
+    """Источник курсов не ответил: DV01 на сегодня считается по последнему курсу из БД"""
+    _, fx = sources
+    ws_id, h, rev = await workspace_with(api, (NEW_BOND, 1), (USD_BOND, 1))
+    calc = (await calculate(api, ws_id, h, rev)).json()
+    fx.mode = "down"
+    body = (await api.get(diff_url(calc["id"], NEXT_DAY))).json()
+    rows = {row["isin"]: row for row in body["rows"]}
+    # рублёвой бумаге курс не нужен; валютная берёт курс расчёта из БД
+    assert rows[NEW_BOND]["current_dv01"] is not None
+    usd = rows[USD_BOND]
+    assert (usd["current_fx_origin"], usd["current_fx_error"]) == ("db", "FX_PROVIDER_UNAVAILABLE")
+    assert usd["current_dv01"] is not None and usd["current_dv01_error"] is None
+    assert body["current_total"] is not None
+
+
+async def test_no_current_dv01_without_any_data(api, sources):
+    """Данных нет ни у источника, ни в БД: DV01 на сегодня нет, итога тоже"""
+    market, _ = sources
+    market.down = True
+    ws_id, h, rev = await workspace_with(api, (NEW_BOND, 1))
+    failed = (await calculate(api, ws_id, h, rev)).json()
+    assert failed["status"] == "failed"
+    body = (await api.get(diff_url(failed["id"], DAY))).json()
+    row = body["rows"][0]
+    assert (row["saved_dv01"], row["current_dv01"], row["dv01_change"]) == (None, None, None)
+    assert row["current_dv01_error"] == "PROVIDER_UNAVAILABLE"
+    assert (body["saved_total"], body["current_total"], body["total_change"]) == (None, None, None)
+
+
 # --- БД: история только добавляется ---------------------------------------------------
 
 

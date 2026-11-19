@@ -1,10 +1,12 @@
 """Сравнение сохранённого расчёта с новым ответом источника
 
+По каждой бумаге: сохранённые и новые данные, DV01 по тем и другим, плюс итог по составу
 Ничего не записывает: сохранённые снимки, курсы и строки результата остаются как были
 Как и расчёт, не держит транзакцию во время запросов к источникам
 """
 
 from datetime import date
+from decimal import Decimal
 
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -12,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import contracts
 from app.db import CalculationResult, CalculationRun, Instrument
+from app.enums import RowErrorCode, RowStatus
 from app.schemas.source_diff import FxData, SnapshotData, SourceDiffOut, SourceDiffRow
 from app.services.calculation import (
     BASE_CURRENCY,
@@ -33,12 +36,15 @@ async def compare_with_source(
     as_of: date,
     market: contracts.MarketDataProvider,
     fx: contracts.FxRateProvider,
+    calc: contracts.RiskCalculator,
 ) -> SourceDiffOut:
     # 1. сохранённое: по одной строке результата на ISIN (у одного ISIN один снимок и курс)
     _, results = await get_calculation(db, run.id)
     saved: dict[str, CalculationResult] = {}
+    by_isin: dict[str, list[CalculationResult]] = {}
     for r in results:
         saved.setdefault(r.input_isin, r)
+        by_isin.setdefault(r.input_isin, []).append(r)
     instruments = {
         i.isin: i.id for i in await db.scalars(select(Instrument).where(Instrument.isin.in_(saved)))
     }
@@ -103,6 +109,16 @@ async def compare_with_source(
         )
         currency = currency_of(isin)
         new_fx, fx_origin = _pick(currency, rates, rates_from_db)
+        rows_of_isin = by_isin[isin]
+        saved_dv01 = _saved_dv01(rows_of_isin)
+        current_dv01, dv01_error = _current_dv01(
+            rows_of_isin,
+            new,
+            new_fx,
+            snapshot_error=snapshot_errors.get(isin),
+            fx_error=rate_errors.get(currency),
+            calc=calc,
+        )
         rows.append(
             SourceDiffRow(
                 isin=isin,
@@ -115,11 +131,81 @@ async def compare_with_source(
                 current_fx_origin=fx_origin,
                 current_fx_error=rate_errors.get(currency),
                 changed=_changed(old, new) + _changed(old_fx, new_fx, prefix="fx_"),
+                quantity=sum(r.input_quantity for r in rows_of_isin),
+                saved_dv01=saved_dv01,
+                current_dv01=current_dv01,
+                current_dv01_error=dv01_error,
+                dv01_change=_minus(current_dv01, saved_dv01),
             )
         )
-    return SourceDiffOut(
-        calculation_id=run.id, valuation_date=run.valuation_date, compared_as_of=as_of, rows=rows
+    current_total = (
+        sum((r.current_dv01 for r in rows), Decimal(0))
+        if rows and all(r.current_dv01 is not None for r in rows)
+        else None
     )
+    return SourceDiffOut(
+        calculation_id=run.id,
+        valuation_date=run.valuation_date,
+        compared_as_of=as_of,
+        saved_total=run.total_value,
+        current_total=current_total,
+        total_change=_minus(current_total, run.total_value),
+        rows=rows,
+    )
+
+
+def _saved_dv01(rows: list[CalculationResult]) -> Decimal | None:
+    """Сумма DV01 строк этого ISIN; если хоть одна с ошибкой, итога по бумаге нет"""
+    if any(r.status != RowStatus.SUCCESS for r in rows):
+        return None
+    return sum((r.metric_value for r in rows), Decimal(0))
+
+
+def _current_dv01(
+    rows: list[CalculationResult],
+    snap: SnapshotData | None,
+    rate: FxData | None,
+    *,
+    snapshot_error: RowErrorCode | None,
+    fx_error: RowErrorCode | None,
+    calc: contracts.RiskCalculator,
+) -> tuple[Decimal | None, RowErrorCode | None]:
+    """DV01 того же количества по новым данным, той же формулой, что и расчёт"""
+    if snap is None:
+        return None, snapshot_error or RowErrorCode.MISSING_MARKET_DATA
+    if snap.nominal is None or snap.price_pct is None or snap.accrued_interest is None:
+        return None, RowErrorCode.MISSING_MARKET_DATA
+    if snap.currency == BASE_CURRENCY:
+        fx_rate = Decimal(1)
+    elif rate is None:
+        return None, fx_error or RowErrorCode.MISSING_FX_RATE
+    else:
+        fx_rate = rate.rate_to_rub
+    total = Decimal(0)
+    # по каждой сделке отдельно, как в расчёте: сумма количеств может оказаться нулём
+    for r in rows:
+        try:
+            result = calc(
+                contracts.Dv01Input(
+                    quantity=r.input_quantity,
+                    nominal=snap.nominal,
+                    price_pct=snap.price_pct,
+                    accrued_interest=snap.accrued_interest,
+                    fx_rate=fx_rate,
+                    duration_mod=snap.duration_mod,
+                    convexity=snap.convexity,
+                    coupon_type=snap.coupon_type,
+                    coupon_frequency=snap.coupon_frequency,
+                )
+            )
+        except contracts.CalculationInputError as exc:
+            return None, exc.code
+        total += result.dv01
+    return total, None
+
+
+def _minus(new: Decimal | None, old: Decimal | None) -> Decimal | None:
+    return new - old if new is not None and old is not None else None
 
 
 def _snapshot(result: CalculationResult) -> SnapshotData | None:
