@@ -11,6 +11,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.observability import REQUEST_ID_HEADER, error_code_var, error_type, request_id_var
 from app.schemas.common import ErrorDetail, ErrorOut
 from app.services.calculation import WorkspaceEmpty
+from app.services.history import CalculationNotInWorkspace
 from app.services.workspaces import RevisionConflict, TradeNotFound
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,10 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(TradeNotFound)
     async def _trade_missing(_: Request, __: TradeNotFound) -> JSONResponse:
         return _json(404, ErrorOut(code="TRADE_NOT_FOUND", message="Сделка не найдена"))
+
+    @app.exception_handler(CalculationNotInWorkspace)
+    async def _calc_missing(_: Request, __: CalculationNotInWorkspace) -> JSONResponse:
+        return _json(404, ErrorOut(code="CALCULATION_NOT_FOUND", message="Расчёт не найден"))
 
     @app.exception_handler(WorkspaceEmpty)
     async def _empty(_: Request, __: WorkspaceEmpty) -> JSONResponse:

@@ -6,18 +6,28 @@ from typing import Annotated
 from fastapi import APIRouter, Query, status
 from pydantic import AfterValidator
 
-from app.api.convert import calculation_out
+from app.api.convert import calculation_out, workspace_out
 from app.api.deps import (
     Db,
     FxRates,
     MarketData,
     OwnCalculation,
+    OwnWorkspace,
     OwnWorkspaceForChange,
     RiskCalculator,
 )
 from app.errors import error_responses
-from app.schemas import CalculationOut, CalculationRequest, SourceDiffOut
+from app.schemas import (
+    CalculationListOut,
+    CalculationOut,
+    CalculationRequest,
+    CalculationSummaryOut,
+    RestoreRequest,
+    SourceDiffOut,
+    WorkspaceOut,
+)
 from app.services import calculation as service
+from app.services import history
 from app.services.source_diff import compare_with_source
 
 router = APIRouter(tags=["Расчёт DV01"])
@@ -96,3 +106,60 @@ async def source_diff(
     run: OwnCalculation, db: Db, market: MarketData, fx: FxRates, as_of: AsOf = None
 ):
     return await compare_with_source(db, run, as_of or date.today(), market, fx)
+
+
+@router.get(
+    "/api/v1/workspaces/{workspace_id}/calculations",
+    response_model=CalculationListOut,
+    summary="История расчётов набора",
+    description=(
+        "Расчёты набора, новые сверху: дата оценки, статус, итог, число позиций и ошибок. "
+        "`is_current = true`, если набор не меняли после расчёта. Полный результат: "
+        "`GET /api/v1/calculations/{id}`. Сохранённые расчёты не меняются"
+    ),
+    responses=error_responses(401, 404, 422, 503),
+)
+async def list_calculations(
+    workspace: OwnWorkspace,
+    db: Db,
+    limit: Annotated[int, Query(ge=1, le=100, description="Сколько расчётов вернуть")] = 20,
+    offset: Annotated[int, Query(ge=0, description="Сколько самых новых пропустить")] = 0,
+):
+    items, total = await history.list_calculations(db, workspace, limit, offset)
+    return CalculationListOut(
+        items=[
+            CalculationSummaryOut(
+                id=i["run"].id,
+                workspace_revision=i["run"].workspace_revision,
+                valuation_date=i["run"].valuation_date,
+                status=i["run"].status,
+                total_value=i["run"].total_value,
+                methodology_version=i["run"].methodology_version,
+                positions=i["positions"],
+                failed_positions=i["failed_positions"],
+                is_current=i["is_current"],
+                created_at=i["run"].created_at,
+                completed_at=i["run"].completed_at,
+            )
+            for i in items
+        ],
+        total=total,
+    )
+
+
+@router.post(
+    "/api/v1/workspaces/{workspace_id}/restore",
+    response_model=WorkspaceOut,
+    summary="Взять прошлый расчёт за основу",
+    description=(
+        "Сделки набора заменяются входами выбранного расчёта (ISIN и количество) одной "
+        "транзакцией, revision растёт на 1. Сам расчёт и вся история не меняются; чтобы "
+        "получить результат по восстановленному составу, нужен новый расчёт"
+    ),
+    responses=error_responses(401, 403, 404, 409, 422, 503),
+)
+async def restore(body: RestoreRequest, workspace: OwnWorkspaceForChange, db: Db):
+    await history.restore_from_calculation(
+        db, workspace, body.calculation_id, body.expected_revision
+    )
+    return await workspace_out(db, workspace)

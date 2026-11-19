@@ -74,6 +74,8 @@ psycopg в async-режиме не работает, и `/health/ready` отве
 | DELETE | `/api/v1/workspaces/{id}/trades/{trade_id}?expected_revision=N` | удалить сделку |
 | POST | `/api/v1/workspaces/{id}/calculations` | расчёт DV01 `{expected_revision, valuation_date?}` (дата не позже сегодня), результат сохраняется |
 | GET | `/api/v1/calculations/{id}` | сохранённый расчёт с входами на его момент |
+| GET | `/api/v1/workspaces/{id}/calculations?limit=&offset=` | история расчётов набора, новые сверху |
+| POST | `/api/v1/workspaces/{id}/restore` | взять прошлый расчёт за основу `{calculation_id, expected_revision}` |
 | GET | `/metrics` | метрики Prometheus, только внутри сети (см. `docs/monitoring.md`) |
 | GET | `/api/v1/calculations/{id}/source-diff?as_of=` | сохранённые снимок и курс рядом с новым ответом источника |
 | GET | `/api/v1/instruments/{isin}` | карточка облигации из БД |
@@ -205,6 +207,11 @@ CFV = количество × (номинал × цена/100 + НКД) × ку�
 - в строке результата есть происхождение данных: `provider`, `data_as_of`, `currency`,
   `settlement_currency`, `fx_source`, `fx_rate_date`; новый код ошибки `FX_PROVIDER_UNAVAILABLE`
   (источник курсов не ответил), `MISSING_FX_RATE` теперь значит «курса этой валюты нет»
+- история: `GET /api/v1/workspaces/{id}/calculations` отдаёт расчёты новыми сверху (`status`,
+  `total_value`, `positions`, `failed_positions`, `is_current`); полный результат по `id`
+- «взять за основу»: `POST /api/v1/workspaces/{id}/restore` с `calculation_id` и
+  `expected_revision` заменяет сделки набора входами расчёта, в ответе набор с новым revision;
+  сам расчёт не меняется, для нового результата нужен пересчёт
 - `market_data_fallback` / `fx_rate_fallback` = `true`: источник не ответил, использованы
   сохранённые данные; показать предупреждение с датой (`data_as_of` / `fx_rate_date`)
 - у ошибок есть `request_id` (он же в заголовке `X-Request-ID`): его можно показать
