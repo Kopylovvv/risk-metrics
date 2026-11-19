@@ -345,3 +345,50 @@ async def test_placeholder_fx_source_is_reported_as_unavailable(api, engine):
     rows = by_isin((await calculate(api, ws_id, h, rev)).json())
     assert rows[USD_BOND]["error_code"] == "FX_PROVIDER_UNAVAILABLE"
     assert rows[FIXED]["status"] == "success"
+
+
+# --- признак запасных данных: источник не ответил, взяты сохранённые -------------------
+
+
+async def test_fresh_answer_is_not_marked_as_fallback(api, moex_cbr):
+    ws_id, h, rev = await workspace_with(api, (NEW_BOND, 1), (USD_BOND, 1))
+    rows = by_isin((await calculate(api, ws_id, h, rev)).json())
+    for row in rows.values():
+        assert (row["market_data_fallback"], row["fx_rate_fallback"]) == (False, False)
+
+
+async def test_saved_snapshot_and_rate_are_marked_when_sources_are_down(api, engine, moex_cbr):
+    market, fx = moex_cbr
+    market.down, fx.mode = True, "down"
+    instrument_id = insert_instrument(engine, USD_BOND, "USD")
+    insert_snapshot(engine, instrument_id, currency="USD", data_as_of=YESTERDAY)
+    insert_rate(engine, "USD", "91", YESTERDAY, "cbr")
+    ws_id, h, rev = await workspace_with(api, (USD_BOND, 1))
+    calc = (await calculate(api, ws_id, h, rev)).json()
+    row = calc["results"][0]
+    assert row["status"] == "success"
+    # интерфейс по этим полям предупреждает, что данные старые, и показывает их даты
+    assert (row["market_data_fallback"], row["data_as_of"]) == (True, YESTERDAY.isoformat())
+    assert (row["fx_rate_fallback"], row["fx_rate_date"]) == (True, YESTERDAY.isoformat())
+    # признак сохранён вместе с расчётом
+    again = (await api.get(f"/api/v1/calculations/{calc['id']}")).json()["results"][0]
+    assert (again["market_data_fallback"], again["fx_rate_fallback"]) == (True, True)
+
+
+async def test_only_market_data_fallback_when_cbr_answers(api, engine, moex_cbr):
+    market, _ = moex_cbr
+    market.down = True
+    instrument_id = insert_instrument(engine, USD_BOND, "USD")
+    insert_snapshot(engine, instrument_id, currency="USD", data_as_of=YESTERDAY)
+    ws_id, h, rev = await workspace_with(api, (USD_BOND, 1))
+    row = (await calculate(api, ws_id, h, rev)).json()["results"][0]
+    assert (row["market_data_fallback"], row["fx_rate_fallback"]) == (True, False)
+
+
+async def test_snapshot_of_the_day_reused_without_request_is_not_fallback(api, engine, moex_cbr):
+    market, _ = moex_cbr
+    insert_snapshot(engine, insert_instrument(engine, FIXED))
+    ws_id, h, rev = await workspace_with(api, (FIXED, 1))
+    row = (await calculate(api, ws_id, h, rev)).json()["results"][0]
+    assert market.calls == []  # снимок за дату уже был: источник не спрашивали, это не сбой
+    assert (row["market_data_fallback"], row["fx_rate_fallback"]) == (False, False)

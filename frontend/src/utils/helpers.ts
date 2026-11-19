@@ -108,6 +108,20 @@ export function rowErrorText(code: string | null): { label: string; hint: string
   return (code && ROW_ERRORS[code]) || { label: 'Ошибка', hint: code ?? 'Ошибка расчёта строки' };
 }
 
+// Предупреждение о запасных данных: источник не ответил, расчёт взял сохранённые
+export function fallbackNote(row: {
+  marketDataFallback: boolean | null;
+  fxRateFallback: boolean | null;
+  dataAsOf: string | null;
+  fxRateDate: string | null;
+}): string | null {
+  const quote = row.marketDataFallback ? `котировка от ${row.dataAsOf ?? '?'}` : null;
+  const rate = row.fxRateFallback ? `курс от ${row.fxRateDate ?? '?'}` : null;
+  if (!quote && !rate) return null;
+  const what = [quote, rate].filter(Boolean).join(' и ');
+  return `Источник не ответил: использованы сохранённые данные (${what})`;
+}
+
 // Результат устарел, если набор изменился после расчёта (revision другой)
 export function isResultStale(
   workspace: { revision: number } | null,

@@ -422,7 +422,7 @@ async def test_stand_data_survives_upgrade_to_head(upgraded_stand, control):
     from sqlalchemy.exc import IntegrityError
 
     ids, version, engine = upgraded_stand
-    assert version == "0005"
+    assert version == "0006"
     async with second_client() as user:
         user.headers["Cookie"] = f"rm_session={SESSION}"  # cookie, выданная старой версией
         h = {"X-CSRF-Token": csrf_token_for(SESSION)}
@@ -450,6 +450,8 @@ async def test_stand_data_survives_upgrade_to_head(upgraded_stand, control):
             "USD",
             None,  # до 0004 валюту расчётов не хранили
         )
+        # до 0006 признак запасных данных не сохранялся: null, а не false
+        assert (row["market_data_fallback"], row["fx_rate_fallback"]) == (None, None)
 
         # новый расчёт после обновления берёт Мосбиржу и ЦБ, снимок Cbonds не трогает
         new = (await run_calc(user, ws["id"], h, 1)).json()

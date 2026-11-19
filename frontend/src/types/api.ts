@@ -47,6 +47,9 @@ export interface CalculationRow {
   settlementCurrency: string | null;
   fxSource: string | null;
   fxRateDate: string | null;
+  // источник не ответил, взяты ранее сохранённые данные; null в старых расчётах
+  marketDataFallback: boolean | null;
+  fxRateFallback: boolean | null;
   nominalUsed: string | null;
   pricePctUsed: string | null;
   accruedInterestUsed: string | null;

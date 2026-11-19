@@ -6,6 +6,7 @@ from decimal import Decimal
 from enum import Enum
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -231,6 +232,9 @@ class CalculationResult(Base):
     metric_value: Mapped[Decimal | None] = mapped_column(Numeric)  # DV01, RUB
     status: Mapped[RowStatus] = mapped_column(pg_enum(RowStatus, "row_status"), nullable=False)
     error_code: Mapped[str | None] = mapped_column(String(64))
+    # источник не ответил и подставлены ранее сохранённые данные; NULL в расчётах до 0006
+    market_data_fallback: Mapped[bool | None] = mapped_column(Boolean)
+    fx_rate_fallback: Mapped[bool | None] = mapped_column(Boolean)
 
     run: Mapped[CalculationRun] = relationship(back_populates="results")
     snapshot: Mapped[MarketDataSnapshot | None] = relationship()  # источник и дата данных

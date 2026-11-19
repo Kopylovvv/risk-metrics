@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { validateIsin, validateQuantity, rowErrorText, isResultStale } from '../src/utils/helpers.ts';
+import { validateIsin, validateQuantity, rowErrorText, isResultStale, fallbackNote } from '../src/utils/helpers.ts';
 import {
   mockOpenWorkspace,
   mockAddTrade,
@@ -122,4 +122,23 @@ test('Результат устарел, когда revision набора отл
   assert.equal(isResultStale({ revision: 4 }, { workspaceRevision: 3 }), true);
   assert.equal(isResultStale(null, { workspaceRevision: 3 }), false);
   assert.equal(isResultStale({ revision: 3 }, null), false);
+});
+
+test('Запасные данные: предупреждение, если источник не ответил', () => {
+  const base = { dataAsOf: '2026-11-17', fxRateDate: '2026-11-18' };
+  assert.equal(fallbackNote({ ...base, marketDataFallback: false, fxRateFallback: false }), null);
+  // старые расчёты без признака: null, предупреждения нет
+  assert.equal(fallbackNote({ ...base, marketDataFallback: null, fxRateFallback: null }), null);
+  assert.equal(
+    fallbackNote({ ...base, marketDataFallback: true, fxRateFallback: false }),
+    'Источник не ответил: использованы сохранённые данные (котировка от 2026-11-17)',
+  );
+  assert.equal(
+    fallbackNote({ ...base, marketDataFallback: true, fxRateFallback: true }),
+    'Источник не ответил: использованы сохранённые данные (котировка от 2026-11-17 и курс от 2026-11-18)',
+  );
+  assert.equal(
+    fallbackNote({ ...base, marketDataFallback: false, fxRateFallback: true }),
+    'Источник не ответил: использованы сохранённые данные (курс от 2026-11-18)',
+  );
 });

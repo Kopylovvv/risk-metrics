@@ -82,6 +82,8 @@ def calculation_out(run: CalculationRun, results: list[CalculationResult]) -> Ca
             settlement_currency=r.snapshot.settlement_currency if r.snapshot else None,
             fx_source=r.fx_rate.source if r.fx_rate else None,
             fx_rate_date=r.fx_rate.rate_date if r.fx_rate else None,
+            market_data_fallback=r.market_data_fallback,
+            fx_rate_fallback=r.fx_rate_fallback,
             nominal_used=r.nominal_used,
             price_pct_used=r.price_pct_used,
             accrued_interest_used=r.accrued_interest_used,
