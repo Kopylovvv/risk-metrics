@@ -50,6 +50,16 @@ class CalculationRowOut(BaseModel):
     fx_source: str | None = Field(
         None, description="Источник курса: cbr или demo; null для рублёвой бумаги (курс = 1)"
     )
+    market_data_fallback: bool | None = Field(
+        None,
+        description="true: источник рыночных данных не ответил, взят ранее сохранённый снимок "
+        "(его дата в data_as_of); null в расчётах до появления признака",
+    )
+    fx_rate_fallback: bool | None = Field(
+        None,
+        description="true: источник курсов не ответил, взят ранее сохранённый курс "
+        "(его дата в fx_rate_date); null в расчётах до появления признака",
+    )
     fx_rate_date: date | None = Field(
         None, description="Дата, на которую установлен курс; null для рублёвой бумаги"
     )
@@ -109,6 +119,8 @@ class CalculationOut(BaseModel):
                             "settlement_currency": "RUB",
                             "fx_source": None,
                             "fx_rate_date": None,
+                            "market_data_fallback": False,
+                            "fx_rate_fallback": False,
                             "nominal_used": "1000",
                             "price_pct_used": "95",
                             "accrued_interest_used": "12.5",
@@ -130,6 +142,8 @@ class CalculationOut(BaseModel):
                             "settlement_currency": "RUB",
                             "fx_source": "cbr",
                             "fx_rate_date": "2026-10-12",
+                            "market_data_fallback": False,
+                            "fx_rate_fallback": False,
                             "nominal_used": "1000",
                             "price_pct_used": "98.5",
                             "accrued_interest_used": "10.25",
@@ -151,6 +165,8 @@ class CalculationOut(BaseModel):
                             "settlement_currency": None,
                             "fx_source": None,
                             "fx_rate_date": None,
+                            "market_data_fallback": False,
+                            "fx_rate_fallback": False,
                             "nominal_used": None,
                             "price_pct_used": None,
                             "accrued_interest_used": None,

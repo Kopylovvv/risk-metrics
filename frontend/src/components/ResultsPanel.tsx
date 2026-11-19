@@ -1,5 +1,5 @@
 import type { CalculationResult, CalculationRow } from '@/types/api';
-import { rowErrorText } from '@/utils/helpers';
+import { fallbackNote, rowErrorText } from '@/utils/helpers';
 
 // Откуда данные строки: источник и дата котировки, для валютной бумаги ещё курс
 interface RowSourceInfo {
@@ -62,6 +62,7 @@ export default function ResultsPanel({
   const hasTestData = Boolean(
     result?.results.some((r) => r.provider === 'test' || r.fxSource === 'demo'),
   );
+  const hasFallback = Boolean(result?.results.some((r) => fallbackNote(r) !== null));
 
   const statusLabel =
     result?.status === 'success'
@@ -171,6 +172,22 @@ export default function ResultsPanel({
                 </div>
               )}
 
+              {hasFallback && (
+                <div
+                  id="fallback-notice"
+                  className="flex items-center gap-2 text-[11px] text-amber-300 bg-amber-950/40 border border-amber-500/40 rounded-lg p-2.5"
+                >
+                  <svg className="w-4 h-4 shrink-0 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  <span>
+                    Источник данных не ответил: часть расчёта выполнена по ранее сохранённым котировкам или курсам. Даты указаны в таблице.
+                  </span>
+                </div>
+              )}
+
               {hasTestData && (
                 <div
                   id="test-data-notice"
@@ -245,6 +262,14 @@ export default function ResultsPanel({
                                 </span>
                               );
                             })()}
+                            {fallbackNote(row) && (
+                              <span
+                                data-testid="fallback-note"
+                                className="block text-[10px] font-mono mt-0.5 text-amber-400 font-medium"
+                              >
+                                {fallbackNote(row)}
+                              </span>
+                            )}
                           </td>
                           <td className={`px-3 py-2 text-right font-mono ${row.quantity < 0 ? 'text-red-400' : 'text-slate-200'}`}>
                             {row.quantity.toLocaleString('ru-RU')}

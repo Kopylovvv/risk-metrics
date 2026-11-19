@@ -70,6 +70,7 @@ class _Market:
     snapshot: MarketDataSnapshot | None = None  # последний снимок из БД
     new_snapshot: contracts.MarketSnapshot | None = None  # пришёл от источника
     error: RowErrorCode | None = None
+    fallback: bool = False  # источник не ответил, взят ранее сохранённый снимок
 
     @property
     def currency(self) -> str | None:
@@ -84,6 +85,7 @@ class _Fx:
     rate: FxRate | None = None
     new_rate: contracts.FxRate | None = None
     error: RowErrorCode | None = None
+    fallback: bool = False  # источник курсов не ответил, взят ранее сохранённый курс
 
 
 @dataclass
@@ -206,6 +208,8 @@ async def _fetch_missing(
             # источник не ответил: берём последний сохранённый снимок (его дата есть в ответе)
             if m.snapshot is None or (source is not None and m.snapshot.provider != source):
                 m.error = exc.code
+            else:
+                m.fallback = True
 
     # The former demo catalog assigned RUB to the real USD ISIN RU000A105A95.
     # Refresh explicitly demo metadata from MOEX; historical snapshots/results stay frozen.
@@ -259,6 +263,8 @@ async def _fetch_missing(
             if known.rate is None or (fx_source is not None and known.rate.source != fx_source):
                 known.rate = None
                 known.error = _fx_error(exc.code)
+            else:
+                known.fallback = True
 
 
 def market_source(market: contracts.MarketDataProvider) -> str:
@@ -468,7 +474,13 @@ def _result_row(
     trade: _TradeInput, prepared: _Prepared, calc: contracts.RiskCalculator
 ) -> CalculationResult:
     """Строка результата: копия входов сделки + подставленные параметры + DV01 или ошибка"""
-    row = CalculationResult(trade_id=trade.id, input_isin=trade.isin, input_quantity=trade.quantity)
+    row = CalculationResult(
+        trade_id=trade.id,
+        input_isin=trade.isin,
+        input_quantity=trade.quantity,
+        market_data_fallback=False,
+        fx_rate_fallback=False,
+    )
 
     def failed(code: RowErrorCode) -> CalculationResult:
         row.status, row.error_code = RowStatus.FAILED, code.value
@@ -480,6 +492,7 @@ def _result_row(
     snap = m.snapshot
     row.market_data_snapshot_id = snap.id
     row.snapshot = snap
+    row.market_data_fallback = m.fallback
     if snap.nominal is None or snap.price_pct is None or snap.accrued_interest is None:
         return failed(RowErrorCode.MISSING_MARKET_DATA)
     if m.instrument is not None and snap.currency != m.instrument.currency:
@@ -493,6 +506,7 @@ def _result_row(
             return failed(fx.error or RowErrorCode.MISSING_FX_RATE)
         rate = fx.rate.rate_to_rub
         row.fx_rate_id = fx.rate.id
+        row.fx_rate_fallback = fx.fallback
 
     row.nominal_used, row.price_pct_used, row.fx_rate_used = snap.nominal, snap.price_pct, rate
     row.accrued_interest_used = snap.accrued_interest
